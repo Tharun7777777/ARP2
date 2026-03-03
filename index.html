@@ -3,944 +3,630 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Leaflet Map</title>
+    <title>MapSense</title>
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
 
-
     <style>
-        #map {
-            height: 100vh;
-            width: 100%;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body { font-family: Arial, sans-serif; }
+
+        #map { height: 100vh; width: 100%; }
+
+        /* ── Sidebar ── */
+        #sidebar {
+            position: fixed;
+            top: 0; right: -360px;
+            width: 340px; height: 100vh;
+            background: #ffffff;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.18);
+            padding: 16px;
+            transition: right 0.35s ease;
+            overflow-y: auto;
+            z-index: 9999;
+        }
+        #sidebar.open { right: 0; }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+        }
+        .sidebar-header h2 { font-size: 18px; }
+
+        .close-btn {
+            background: none; border: none;
+            font-size: 22px; cursor: pointer; color: #555;
         }
 
-        #sidebar {
-    position: fixed;
-    top: 0;
-    right: -350px; 
-    width: 320px;
-    height: 100vh;
-    background: #ffffff;
-    box-shadow: -4px 0 15px rgba(0,0,0,0.2);
-    padding: 20px;
-    transition: 0.35s;
-    overflow-y: auto;
-    font-family: Arial;
-    z-index: 9999;
+        /* ── Route box ── */
+        #route-box {
+            position: absolute;
+            top: 12px; left: 12px;
+            z-index: 9999;
+            background: white;
+            padding: 10px 12px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+        }
+        #route-box input {
+            display: block;
+            width: 190px;
+            margin: 4px 0;
+            padding: 6px 8px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        #route-box button {
+            margin-top: 6px;
+            width: 100%;
+            padding: 7px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #route-box button:hover { background: #1d4ed8; }
 
-}
+        /* ── Status bar ── */
+        #data-timestamp {
+            position: fixed;
+            bottom: 50px; left: 10px;
+            z-index: 9999;
+            background: rgba(255,255,255,0.9);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #555;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+        }
 
-#sidebar.open {
-    right: 0;
-}
+        #refresh-btn {
+            position: fixed;
+            bottom: 16px; left: 10px;
+            z-index: 9999;
+            background: white;
+            border: 1px solid #ddd;
+            padding: 7px 14px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+            cursor: pointer;
+            font-size: 13px;
+        }
+        #refresh-btn:hover { background: #f5f5f5; }
 
-#sidebar h2 {
-    margin-top: 0;
-    font-size: 22px;
-}
+        /* ── Route list in sidebar ── */
+        .route-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        .route-card:hover { border-color: #2563eb; }
+        .route-card.active { border-color: #2563eb; background: #eff6ff; }
 
-#risk-score {
-    font-size: 18px;
-    font-weight: bold;
-    margin-bottom: 15px;
-}
-#route-box {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 9999;
-    background: white;
-    padding: 10px;
-    border-radius: 10px;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.3);
-}
+        .route-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+        .route-title { font-weight: 700; font-size: 14px; }
+        .route-meta { font-size: 12px; color: #666; margin-top: 2px; }
+        .risk-badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 12px;
+        }
+        .risk-low    { background: #d1fae5; color: #065f46; }
+        .risk-medium { background: #fef3c7; color: #92400e; }
+        .risk-high   { background: #fee2e2; color: #991b1b; }
 
-#route-box input {
-    width: 160px;
-    margin: 4px 0;
-    padding: 6px;
-}
+        .turns-btn {
+            margin-top: 8px;
+            padding: 4px 10px;
+            font-size: 12px;
+            background: #e5e7eb;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .turns-btn:hover { background: #d1d5db; }
 
-.close-btn {
-    background: none;
-    border: none;
-    font-size: 20px;
-    cursor: pointer;
-    
-}
+        #turn-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 10px;
+        }
+        #turn-list li {
+            padding: 7px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #turn-list li span.icon { font-size: 18px; flex-shrink: 0; }
 
+        .route-tooltip {
+            background: rgba(255,255,255,0.92);
+            color: #111;
+            font-weight: bold;
+            font-size: 13px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+            border: 1px solid #ddd;
+            pointer-events: none;
+        }
 
-/* Tooltip for route numbers */
-.route-tooltip {
-    background: rgba(255, 255, 255, 0.9);
-    color: #111;
-    font-weight: bold;
-    font-size: 14px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    border: 1px solid #ddd;
-    pointer-events: none; /* avoids blocking mouse */
-}
+        #advice-box { margin-top: 10px; font-size: 13px; }
+        #advice-box.low    { color: #065f46; }
+        #advice-box.medium { color: #92400e; }
+        #advice-box.high   { color: #991b1b; }
 
-.route-tooltip.leaflet-tooltip-bottom::after,
-.route-tooltip.leaflet-tooltip-top::after {
-    border-top-color: rgba(255, 255, 255, 0.9); /* matches tooltip bg */
-}
-
-
-
+        hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
     </style>
 </head>
 <body>
 
-
-
 <div id="map"></div>
 
-<div id="sidebar" class="sidebar">
+<div id="sidebar">
     <div class="sidebar-header">
-        <b>${routeLabel}</b>${recommended}
-
-        <button id="closeSidebar" class="close-btn">✕</button>
+        <h2>🗺 MapSense</h2>
+        <button class="close-btn" id="closeSidebar">✕</button>
     </div>
-
-    <div id="route-content">
-        <div id="risk-score"></div>
-        <div id="risk-details"></div>
-        <div id="risk-advice"></div>
-        <ol id="turn-list"></ol>
-    </div>
+    <div id="risk-score"></div>
+    <div id="risk-details"></div>
+    <div id="advice-box"></div>
+    <ol id="turn-list"></ol>
 </div>
 
-
-<!--routing-->
 <div id="route-box">
     <input id="start" placeholder="Start location" />
     <input id="end" placeholder="End location" />
-    <button onclick="getRouteMultiple()">Find Route</button>
+    <button onclick="getRouteMultiple()">🔍 Find Route</button>
 </div>
 
-
-
-<script src="traffic.js"></script>
-
+<div id="data-timestamp">⏳ Loading live data…</div>
+<button id="refresh-btn" onclick="loadAllData()">🔄 Refresh Data</button>
 
 <script>
+// ─────────────────────────────────────────────────
+// GLOBALS
+// ─────────────────────────────────────────────────
+let acc = [], poll = [], traffic = [], hosp = [];
+let combinedPoints = [];
+let routeLayers = [], routesInfo = [];
 
-document.addEventListener("DOMContentLoaded", () => {
-    const closeBtn = document.getElementById("closeSidebar");
-    const sidebar = document.getElementById("sidebar");
+let accidentLayer, pollutionLayer, trafficLayer, hospitalLayer, combinedLayer;
+let hoverGroup;
+let layerControl;
 
-    if (closeBtn && sidebar) {
-        closeBtn.onclick = () => {
-            sidebar.classList.remove("open");
-        };
-    }
-});
-
-
-let acc = [];
-let crime = [];
-let poll = [];
-let traffic = [];
-let wifi = [];
-let hosp = [];
-
-
-
-const heatStyle = {
-    radius: 60,
-    blur: 35,
-    maxZoom: 17,
-    minOpacity: 0.4,
-    gradient: {
-        0.2: "blue",
-        0.4: "cyan",
-        0.6: "lime",
-        0.8: "yellow",
-        1.0: "red"
-    }
+const heatCfg = {
+    radius: 60, blur: 35, maxZoom: 17, minOpacity: 0.4,
+    gradient: { 0.2:"blue", 0.4:"cyan", 0.6:"lime", 0.8:"yellow", 1.0:"red" }
 };
 
+// ─────────────────────────────────────────────────
+// MAP INIT
+// ─────────────────────────────────────────────────
 const map = L.map("map");
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+map.setView([10.8505, 76.2711], 7);
 
-// ⭐ GLOBAL: Risk Advice Function (must be placed BEFORE usage)
-function getAdvice(score) {
-    if (score > 0.75) {
-        return "<p style='color:red'><b>⚠ High Risk:</b> Avoid this route if possible.</p>";
-    }
-    if (score > 0.50) {
-        return "<p style='color:orange'><b>⚠ Medium Risk:</b> Conditions may be unsafe.</p>";
-    }
-    return "<p style='color:green'><b>✓ Low Risk:</b> Good and safe route.</p>";
-}
+document.getElementById("closeSidebar").onclick = () =>
+    document.getElementById("sidebar").classList.remove("open");
 
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19
-}).addTo(map);
-
-
-Promise.all([
-// Show loading indicator while fetching live data
-const loadingDiv = document.createElement("div");
-loadingDiv.id = "loading-indicator";
-loadingDiv.innerHTML = `
-    <div style="
-        position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-        background:white; padding:20px 30px; border-radius:12px;
-        box-shadow:0 4px 20px rgba(0,0,0,0.2); z-index:99999;
-        font-family:Arial; font-size:16px; text-align:center;
-    ">
-        ⏳ Loading live map data...<br>
-        <small style="color:#888">Fetching real-time traffic, pollution & hazards</small>
-    </div>`;
-document.body.appendChild(loadingDiv);
-
+// ─────────────────────────────────────────────────
+// LIVE DATA LOADING
+// ─────────────────────────────────────────────────
 async function loadAllData() {
-    const [accData, pollData, trafficData, hospData] = await Promise.all([
-        fetch("/api/accidents").then(r => r.json()),
-        fetch("/api/pollution").then(r => r.json()),
-        fetch("/api/traffic").then(r => r.json()),
-        fetch("hospital.json").then(r => r.json())
-    ]);
+    const ts = document.getElementById("data-timestamp");
+    ts.textContent = "⏳ Fetching live data…";
 
-    acc      = accData;
-    poll     = pollData;
-    traffic  = trafficData;
-    hosp     = hospData;
+    try {
+        const [accData, pollData, trafficData, hospData] = await Promise.all([
+            fetch("/api/accidents").then(r => { if (!r.ok) throw new Error("accidents"); return r.json(); }),
+            fetch("/api/pollution").then(r => { if (!r.ok) throw new Error("pollution"); return r.json(); }),
+            fetch("/api/traffic").then(r  => { if (!r.ok) throw new Error("traffic");   return r.json(); }),
+            fetch("hospital.json").then(r => { if (!r.ok) throw new Error("hospital");  return r.json(); })
+        ]);
 
-    // Remove loading indicator
-    document.getElementById("loading-indicator")?.remove();
+        acc     = accData;
+        poll    = pollData;
+        traffic = trafficData;
+        hosp    = hospData;
 
-    initMap();
+        ts.textContent = "✅ Live data — " + new Date().toLocaleTimeString();
+        buildLayers();
+    } catch (err) {
+        console.error("Data load error:", err);
+        ts.textContent = "❌ Error loading: " + err.message + " — retrying in 60s";
+        setTimeout(loadAllData, 60000);
+    }
 }
 
-loadAllData();
+// ─────────────────────────────────────────────────
+// BUILD / REFRESH HEATMAP LAYERS
+// ─────────────────────────────────────────────────
+function buildLayers() {
+    // Remove old layers
+    [accidentLayer, pollutionLayer, trafficLayer, hospitalLayer, combinedLayer, hoverGroup]
+        .forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
+    if (layerControl) layerControl.remove();
 
-// Auto refresh every 5 minutes
-setInterval(() => {
-    console.log("🔄 Refreshing live data...");
-    loadAllData();
-}, 5 * 60 * 1000);
-
-function initMap() {
-
-
-    // CREATE HEATLAYERS
-    const accidentLayer = L.heatLayer(acc.map(d => [d.lat, d.lng, d.value]), heatStyle);
-    const crimeLayer = L.heatLayer(crime.map(d => [d.lat, d.lng, d.value]), heatStyle);
-    const pollutionLayer = L.heatLayer(poll.map(d => [d.lat, d.lng, d.value]), heatStyle);
-    const trafficLayer = L.heatLayer(traffic.map(d => [d.lat, d.lng, d.value]), heatStyle);
-    const wifiLayer = L.heatLayer(wifi.map(d => [d.lat, d.lng, d.value]), heatStyle);
-    const hospitalLayer = L.heatLayer(hosp.map(d => [d.lat, d.lng, d.value]), heatStyle);
-
-
-    // 🔥 COMBINED RISK LAYER
+    // Combined risk
     combinedPoints = [];
-
-    const maxLen = Math.min(acc.length, crime.length, poll.length, traffic.length, wifi.length, hosp.length);
-
-    for (let i = 0; i < maxLen; i++) {
-        if (!acc[i]?.lat || !acc[i]?.lng) continue;
-
-       // Redistributed weights without crime + wifi
-const combinedValue =
-    (acc[i]?.value     || 0) * 0.35 +
-    (traffic[i]?.value || 0) * 0.30 +
-    (poll[i]?.value    || 0) * 0.20 +
-    (hosp[i]?.value    || 0) * 0.15;
-
-        combinedPoints.push([acc[i].lat, acc[i].lng, combinedValue]);
+    const n = Math.min(acc.length, poll.length, traffic.length, hosp.length);
+    for (let i = 0; i < n; i++) {
+        if (!acc[i]?.lat) continue;
+        const v = (acc[i].value||0)*0.35 + (traffic[i].value||0)*0.30
+                + (poll[i].value||0)*0.20  + (hosp[i].value||0)*0.15;
+        combinedPoints.push([acc[i].lat, acc[i].lng, v]);
     }
 
-    const combinedLayer = L.heatLayer(combinedPoints, heatStyle);
+    accidentLayer  = L.heatLayer(acc.map(d     => [d.lat, d.lng, d.value]), heatCfg);
+    pollutionLayer = L.heatLayer(poll.map(d    => [d.lat, d.lng, d.value]), heatCfg);
+    trafficLayer   = L.heatLayer(traffic.map(d => [d.lat, d.lng, d.value]), heatCfg);
+    hospitalLayer  = L.heatLayer(hosp.map(d    => [d.lat, d.lng, d.value]), heatCfg);
+    combinedLayer  = L.heatLayer(combinedPoints, heatCfg);
 
-    // Fit map to full data extent
-    map.fitBounds(combinedPoints.map(p => [p[0], p[1]]));
-
-
-    // ⭐ TOOLTIP HOVER LAYERGROUPS
-    const accidentHover = L.layerGroup().addTo(map);
-    const crimeHover = L.layerGroup().addTo(map);
-    const trafficHover = L.layerGroup().addTo(map);
-    const pollutionHover = L.layerGroup().addTo(map);
-    const hospitalHover = L.layerGroup().addTo(map);
-    const combinedHover = L.layerGroup().addTo(map);
-
-    
-
-    // Helper for hover markers
-    function addHoverMarkers(dataset, layer, label) {
-        dataset.forEach(p => {
+    // Invisible hover markers
+    hoverGroup = L.layerGroup().addTo(map);
+    const allSets = [
+        { data: acc,     label: "🚧 Accident Risk" },
+        { data: traffic, label: "🚦 Traffic" },
+        { data: poll,    label: "🏭 Pollution" },
+        { data: hosp,    label: "🏥 Hospital Load" }
+    ];
+    allSets.forEach(({ data, label }) => {
+        data.forEach(p => {
             L.circleMarker([p.lat, p.lng], {
-                radius: 8,
-                color: "transparent",
-                fillColor: "transparent",
-                fillOpacity: 0.05
+                radius: 8, color: "transparent",
+                fillColor: "transparent", fillOpacity: 0.01
             })
             .bindTooltip(`${label}: ${p.value}`, { permanent: false })
-            .addTo(layer);
+            .addTo(hoverGroup);
         });
-    }
+    });
 
-    
-addHoverMarkers(acc, accidentHover, "Accidents");
-addHoverMarkers(crime, crimeHover, "Crime Rate");
-addHoverMarkers(traffic, trafficHover, "Traffic Level");
-addHoverMarkers(poll, pollutionHover, "Pollution Index");
-addHoverMarkers(hosp, hospitalHover, "Hospital Load");
-addHoverMarkers(
-  combinedPoints.map(p => ({ lat: p[0], lng: p[1], value: p[2] })),
-  combinedHover,
-  "Combined Risk"
-);
+    // Layer control
+    const overlays = {
+        "🚧 Accidents":   accidentLayer,
+        "🏭 Pollution":   pollutionLayer,
+        "🚦 Traffic":     trafficLayer,
+        "🏥 Hospital":    hospitalLayer,
+        "🔥 Combined Risk": combinedLayer,
+        "ℹ️ Info tooltips": hoverGroup
+    };
+    layerControl = L.control.layers(null, overlays).addTo(map);
 
+    // Default: show combined
+    combinedLayer.addTo(map);
+}
 
-//on click pop up menu
-
-
-// CLICK EVENT → Show risk popup
-map.on("click", (e) => {
+// ─────────────────────────────────────────────────
+// MAP CLICK — RISK POPUP
+// ─────────────────────────────────────────────────
+map.on("click", e => {
     const { lat, lng } = e.latlng;
+    const a = closest(acc,     lat, lng)?.value || 0;
+    const t = closest(traffic, lat, lng)?.value || 0;
+    const p = closest(poll,    lat, lng)?.value || 0;
+    const h = closest(hosp,    lat, lng)?.value || 0;
+    const score = a*0.35 + t*0.30 + p*0.20 + h*0.15;
 
-    const a = getClosestPoint(acc, lat, lng)?.value || 0;
-const t = getClosestPoint(traffic, lat, lng)?.value || 0;
-const p = getClosestPoint(poll, lat, lng)?.value || 0;
-const h = getClosestPoint(hosp, lat, lng)?.value || 0;
-
-const combined =
-    a * 0.35 +
-    t * 0.30 +
-    p * 0.20 +
-    h * 0.15;
-
-const popupHTML = `
-    <b>📍 Risk Analysis for Selected Location</b><br><br>
-    🚧 Accidents: <b>${a}</b><br>
-    🚦 Traffic: <b>${t}</b><br>
-    🏭 Pollution: <b>${p}</b><br>
-    🏥 Hospital Load: <b>${h}</b><br><br>
-    🔥 <b>Total Risk Score: ${combined.toFixed(2)}</b>
-`;
+    const advice = score > 0.75
+        ? "<span style='color:red'>⚠ High Risk — avoid if possible</span>"
+        : score > 0.50
+        ? "<span style='color:orange'>⚠ Medium Risk — use caution</span>"
+        : "<span style='color:green'>✓ Low Risk — generally safe</span>";
 
     L.popup()
-        .setLatLng([lat, lng])
-        .setContent(popupHTML)
-        .openOn(map);
-
-
-
-
+     .setLatLng([lat, lng])
+     .setContent(`
+        <b>📍 Risk Analysis</b><br><br>
+        🚧 Accident Risk: <b>${a.toFixed(2)}</b><br>
+        🚦 Traffic Level: <b>${t.toFixed(2)}</b><br>
+        🏭 Pollution:     <b>${p.toFixed(2)}</b><br>
+        🏥 Hospital Load: <b>${h.toFixed(2)}</b><br><br>
+        🔥 <b>Total Risk: ${score.toFixed(2)}</b><br>${advice}
+     `)
+     .openOn(map);
 });
 
-
-
-
-
-
-    // LAYER CONTROL
-    const overlays = {
-        "Accidents": accidentLayer,
-        "Crime": crimeLayer,
-        "Pollution": pollutionLayer,
-        "Traffic": trafficLayer,
-        "WiFi Strength": wifiLayer,
-        "Hospital Load": hospitalLayer,
-        "Combined Risk": combinedLayer,
-
-        // Hover layers
-        "ℹ️ Accidents Info": accidentHover,
-        "ℹ️ Crime Info": crimeHover,
-        "ℹ️ Traffic Info": trafficHover,
-        "ℹ️ Pollution Info": pollutionHover,
-        "ℹ️ Hospital Info": hospitalHover,
-        "ℹ️ Combined Info": combinedHover
-    };
-
-    L.control.layers(null, overlays).addTo(map);
-
-});
-
-
-
-
+// ─────────────────────────────────────────────────
 // USER LOCATION
-map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
-
+// ─────────────────────────────────────────────────
+map.locate({ maxZoom: 15, enableHighAccuracy: true });
 map.on("locationfound", e => {
     L.marker(e.latlng).addTo(map).bindPopup("📍 Your Location").openPopup();
+    map.setView(e.latlng, 10);
 });
 
-map.on("locationerror", () => {
-    alert("Unable to find location. Showing India.");
-    map.setView([20.5937, 78.9629], 5);
-});
-
-
-let combinedPoints = []; // make it global
-
-
-
-function getDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-
-    const a =
-        Math.sin(dLat / 2)**2 +
-        Math.cos(lat1 * Math.PI / 180) *
-        Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLon / 2)**2;
-
-    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+// ─────────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────────
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371, r = Math.PI / 180;
+    const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+    const a = Math.sin(dLat/2)**2
+            + Math.cos(lat1*r) * Math.cos(lat2*r) * Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-function sampleRouteCoords(coords, step = 10) {
-    const result = [];
-    for (let i = 0; i < coords.length; i += step) {
-        result.push({ lng: coords[i][0], lat: coords[i][1] });
-    }
-    return result;
+function closest(dataset, lat, lng) {
+    let best = null, min = Infinity;
+    dataset.forEach(p => {
+        const d = haversine(lat, lng, p.lat, p.lng);
+        if (d < min) { min = d; best = p; }
+    });
+    return best;
 }
 
+function riskAtPoint(lat, lng) {
+    const a = closest(acc,     lat, lng)?.value || 0;
+    const t = closest(traffic, lat, lng)?.value || 0;
+    const p = closest(poll,    lat, lng)?.value || 0;
+    const h = closest(hosp,    lat, lng)?.value || 0;
+    return a*0.35 + t*0.30 + p*0.20 + h*0.15;
+}
 
-//Fetch Route Using OSRM API
-// Fetch multiple routes (OSRM alternatives)
+function segmentColor(risk) {
+    if (risk < 0.2) return "#22c55e";
+    if (risk < 0.4) return "#a3e635";
+    if (risk < 0.6) return "#facc15";
+    if (risk < 0.8) return "#f97316";
+    return "#ef4444";
+}
+
+function riskLabel(score) {
+    return score < 0.4 ? "Low" : score < 0.7 ? "Medium" : "High";
+}
+function riskClass(score) {
+    return score < 0.4 ? "risk-low" : score < 0.7 ? "risk-medium" : "risk-high";
+}
+
+// ─────────────────────────────────────────────────
+// GEOCODING
+// ─────────────────────────────────────────────────
+async function geocode(place) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
+    const data = await fetch(url).then(r => r.json());
+    if (!data?.length) throw new Error("Location not found: " + place);
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+}
+
+// ─────────────────────────────────────────────────
+// RISK FOR A FULL ROUTE
+// ─────────────────────────────────────────────────
+function computeRouteRisk(coords) {
+    // Sample every 10th coord
+    const sampled = coords.filter((_, i) => i % 10 === 0);
+    let aSum=0, tSum=0, pSum=0, hSum=0;
+    sampled.forEach(c => {
+        const lat = c[1], lng = c[0];
+        aSum += closest(acc,     lat, lng)?.value || 0;
+        tSum += closest(traffic, lat, lng)?.value || 0;
+        pSum += closest(poll,    lat, lng)?.value || 0;
+        hSum += closest(hosp,    lat, lng)?.value || 0;
+    });
+    const n = sampled.length || 1;
+    const aAvg=aSum/n, tAvg=tSum/n, pAvg=pSum/n, hAvg=hSum/n;
+    return {
+        accAvg: aAvg, trafficAvg: tAvg, pollAvg: pAvg, hospAvg: hAvg,
+        combined: aAvg*0.35 + tAvg*0.30 + pAvg*0.20 + hAvg*0.15
+    };
+}
+
+// ─────────────────────────────────────────────────
+// GET ROUTES (OSRM)
+// ─────────────────────────────────────────────────
 async function getRouteMultiple() {
-    const startText = document.getElementById("start").value;
-    const endText = document.getElementById("end").value;
-    if (!startText || !endText) return alert("Enter start & end location");
+    const s = document.getElementById("start").value;
+    const e = document.getElementById("end").value;
+    if (!s || !e) return alert("Enter start & end location");
 
-    const s = await geocode(startText);
-    const e = await geocode(endText);
-    if (!s || !e) return alert("Location not found");
-
-    // alternatives=true requests multiple routes from OSRM
-const url = `https://router.project-osrm.org/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
-
-    const res = await fetch(url);
-    const data = await res.json();
-
-    // data.routes is an array of route objects
-    if (!data || !data.routes || data.routes.length === 0) {
-        return alert("No routes returned");
+    let sCoord, eCoord;
+    try {
+        [sCoord, eCoord] = await Promise.all([geocode(s), geocode(e)]);
+    } catch (err) {
+        return alert(err.message);
     }
+
+    const url = `https://router.project-osrm.org/route/v1/driving/${sCoord.lng},${sCoord.lat};${eCoord.lng},${eCoord.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
+    const data = await fetch(url).then(r => r.json());
+    if (!data?.routes?.length) return alert("No routes found");
 
     processRoutes(data.routes);
 }
 
-
-
-//Basic Geocoder (Turn any text → Coordinates)
-async function geocode(place) {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${place}`;
-    const res = await fetch(url);
-    const data = await res.json();
-
-    return {
-        lat: parseFloat(data[0].lat),
-        lng: parseFloat(data[0].lon)
-    };
-}
-
-// Find closest point from dataset
-function getClosestPoint(dataset, lat, lng) {
-    let closest = null;
-    let minDist = Infinity;
-
-    dataset.forEach(p => {
-        const dist = getDistance(lat, lng, p.lat, p.lng);
-        if (dist < minDist) {
-            minDist = dist;
-            closest = p;
-        }
-    });
-
-    return closest;
-}
-
-
-function computeRiskForRoute(routeCoords) {
-    // routeCoords: array of [lng, lat] OR objects; sample them first
-    const sampled = sampleRouteCoords(routeCoords, 10);
-
-    let accSum=0, crimeSum=0, trafficSum=0, pollSum=0, hospSum=0, wifiSum=0;
-    sampled.forEach(pt => {
-        const lat = pt.lat;
-        const lng = pt.lng;
-
-        accSum     += getClosestPoint(acc, lat, lng)?.value || 0;
-        crimeSum   += getClosestPoint(crime, lat, lng)?.value || 0;
-        trafficSum += getClosestPoint(traffic, lat, lng)?.value || 0;
-        pollSum    += getClosestPoint(poll, lat, lng)?.value || 0;
-        hospSum    += getClosestPoint(hosp, lat, lng)?.value || 0;
-        wifiSum    += getClosestPoint(wifi, lat, lng)?.value || 0;
-    });
-
-    const n = sampled.length || 1;
-    const accAvg = accSum / n;
-    const crimeAvg = crimeSum / n;
-    const trafficAvg = trafficSum / n;
-    const pollAvg = pollSum / n;
-    const hospAvg = hospSum / n;
-    const wifiAvg = wifiSum / n;
-
-    const combined =
-    accAvg     * 0.35 +
-    trafficAvg * 0.30 +
-    pollAvg    * 0.20 +
-    hospAvg    * 0.15;
-
-    return {
-        accAvg, crimeAvg, trafficAvg, pollAvg, hospAvg, wifiAvg, combined, sampled
-    };
-}
-
-
-function generateRouteReason(routeInfo, otherRoutes) {
-    // routeInfo: the recommended route
-    // otherRoutes: array of other routeInfos to compare
-
-    if (!otherRoutes || otherRoutes.length === 0) return "Lowest overall risk compared to alternatives.";
-
-    const other = otherRoutes[0]; // compare with first alternative
-    const reasons = [];
-
-    if (routeInfo.risk.accAvg < other.risk.accAvg) {
-        reasons.push("🚧 Avoids high-accident zones");
-    }
-    if (routeInfo.risk.crimeAvg < other.risk.crimeAvg) {
-        reasons.push("🛑 Passes through safer roads with lower crime");
-    }
-    if (routeInfo.risk.pollAvg < other.risk.pollAvg) {
-        reasons.push("🏭 Lower pollution along the route");
-    }
-    if (routeInfo.risk.trafficAvg < other.risk.trafficAvg) {
-        reasons.push("🚦 Less congested traffic");
-    }
-    if (routeInfo.risk.hospAvg < other.risk.hospAvg) {
-        reasons.push("🏥 Fewer hospital load areas (less emergency traffic)");
-    }
-    if (routeInfo.risk.wifiAvg > other.risk.wifiAvg) {
-        reasons.push("📶 Better connectivity/WiFi coverage");
-    }
-
-    if (reasons.length === 0) return "Overall, this route is slightly safer or similar to other options.";
-
-    return reasons.join(", ") + ".";
-}
-
-
-// global holders
-let routeLayers = []; // L.geoJSON layers for routes
-let routesInfo = [];  // metadata for sidebar
-
-async function processRoutes(osrmRoutes) {
-    // clear previous
-    routeLayers.forEach(l => map.removeLayer(l.layer || l));
+// ─────────────────────────────────────────────────
+// PROCESS & RENDER ROUTES
+// ─────────────────────────────────────────────────
+function processRoutes(osrmRoutes) {
+    // Clear old route lines
+    routeLayers.forEach(obj => map.removeLayer(obj.line));
     routeLayers = [];
-    routesInfo = [];
+    routesInfo  = [];
 
-    // For each returned route compute metrics
-    osrmRoutes.forEach((r, i) => {
-        const coords = r.geometry.coordinates;
-        const risk = computeRiskForRoute(coords);
-        const steps = r.legs[0]?.steps?.map(s => {
-    if (s.maneuver?.instruction) return s.maneuver.instruction;
-    // fallback: construct instruction from type + modifier + name
-    let instr = '';
-    if (s.maneuver?.type) instr += s.maneuver.type;
-    if (s.maneuver?.modifier) instr += ' ' + s.maneuver.modifier;
-    if (s.name) instr += ' onto ' + s.name;
-    return instr || 'Continue';
-}) || [];
+    osrmRoutes.forEach((route, idx) => {
+        const coords = route.geometry.coordinates;  // [lng, lat]
+        const risk   = computeRouteRisk(coords);
+        const steps  = (route.legs?.[0]?.steps || []);
 
-
-        const info = {
-            index: i,
+        routesInfo.push({
+            index: idx,
             coords,
-            durationMin: Math.round(r.duration / 60),
-            distanceKm: (r.distance / 1000).toFixed(2),
+            durationMin: Math.round(route.duration / 60),
+            distanceKm:  (route.distance / 1000).toFixed(1),
             risk,
             steps
-        };
-
-        routesInfo.push(info);
+        });
     });
 
-    // pick recommended: smallest combined risk
-    // find recommended route by lowest risk, but keep original order
-const recommendedRoute = routesInfo.reduce((min, r) => r.risk.combined < min.risk.combined ? r : min, routesInfo[0]);
-const recommendedIndex = recommendedRoute.index;
+    // Best = lowest combined risk
+    const best = routesInfo.reduce((m, r) => r.risk.combined < m.risk.combined ? r : m, routesInfo[0]);
 
+    // Draw heatmap-coloured lines
+    routesInfo.forEach(info => {
+        info.coords.forEach((c, i) => {
+            if (i === info.coords.length - 1) return;
+            const lat = (info.coords[i][1] + info.coords[i+1][1]) / 2;
+            const lng = (info.coords[i][0] + info.coords[i+1][0]) / 2;
+            const color = segmentColor(riskAtPoint(lat, lng));
+            const line = L.polyline(
+                [[info.coords[i][1], info.coords[i][0]], [info.coords[i+1][1], info.coords[i+1][0]]],
+                { color, weight: 5, opacity: 0.85 }
+            ).addTo(map);
+            line.bindTooltip(`Route ${info.index + 1}`, { direction:"top", className:"route-tooltip" });
+            line.on("click", () => showTurns(info));
+            routeLayers.push({ line, index: info.index });
+        });
+    });
 
-    renderRoutes(routesInfo, recommendedIndex);
-    updateSidebarRoutes(routesInfo, recommendedIndex);
-
-// After computing and sorting routes
-const recommended = routesInfo[0]; 
-const others = routesInfo.slice(1);
-
-const reasonText = generateRouteReason(recommended, others);
-
-document.getElementById("risk-advice").innerHTML = `<b>Why Recommended:</b> ${reasonText}`;
-
+    map.fitBounds(routesInfo[0].coords.map(c => [c[1], c[0]]));
+    renderSidebar(routesInfo, best.index);
 }
 
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-//--------------------------------------------------------- route instructions
+// ─────────────────────────────────────────────────
+// HIGHLIGHT ROUTE
+// ─────────────────────────────────────────────────
+function highlightRoute(idx) {
+    routeLayers.forEach(obj => {
+        obj.line.setStyle({
+            weight:  obj.index === idx ? 7 : 4,
+            opacity: obj.index === idx ? 1 : 0.4
+        });
+    });
+}
 
+// ─────────────────────────────────────────────────
+// SIDEBAR RENDER
+// ─────────────────────────────────────────────────
+function renderSidebar(routesInfo, bestIdx) {
+    let html = `<h3 style="margin-bottom:10px;">🛣 Route Options</h3>`;
 
+    routesInfo.forEach(info => {
+        const r     = info.risk;
+        const rl    = riskLabel(r.combined);
+        const rc    = riskClass(r.combined);
+        const star  = info.index === bestIdx ? " ⭐ <b>Recommended</b>" : "";
+        html += `
+        <div class="route-card" data-idx="${info.index}" onclick="selectRoute(${info.index})">
+            <div class="route-card-header">
+                <div>
+                    <div class="route-title">Route ${info.index + 1}${star}</div>
+                    <div class="route-meta">${info.durationMin} min · ${info.distanceKm} km</div>
+                </div>
+                <div>
+                    <span class="risk-badge ${rc}">${r.combined.toFixed(2)} ${rl}</span>
+                </div>
+            </div>
+            <div style="font-size:11px;color:#666;margin-top:6px;">
+                🚧 ${r.accAvg.toFixed(2)} &nbsp; 🚦 ${r.trafficAvg.toFixed(2)} &nbsp;
+                🏭 ${r.pollAvg.toFixed(2)} &nbsp; 🏥 ${r.hospAvg.toFixed(2)}
+            </div>
+            <button class="turns-btn" onclick="event.stopPropagation(); showTurns(routesInfo[${info.index}])">
+                📋 Turn-by-turn
+            </button>
+        </div>`;
+    });
 
+    document.getElementById("risk-details").innerHTML = html;
+    document.getElementById("risk-score").innerHTML   = "";
+    document.getElementById("advice-box").innerHTML   = "";
+    document.getElementById("turn-list").innerHTML    = "";
+    document.getElementById("sidebar").classList.add("open");
 
+    // Highlight recommended by default
+    highlightRoute(bestIdx);
+}
 
+function selectRoute(idx) {
+    highlightRoute(idx);
+    document.querySelectorAll(".route-card").forEach(el => {
+        el.classList.toggle("active", Number(el.dataset.idx) === idx);
+    });
+}
 
-// ---------- helper: icon from text ----------
-function getDirectionIconFromParts(type, modifier, name) {
-    const txt = `${type || ""} ${modifier || ""} ${name || ""}`.toLowerCase();
-    if (txt.includes("left")) return "⬅";
-    if (txt.includes("right")) return "➡";
-    if (txt.includes("straight")) return "⬆";
-    if (txt.includes("slight left")) return "↖";
-    if (txt.includes("slight right")) return "↗";
-    if (txt.includes("roundabout")) return "⭕";
-    if (txt.includes("merge")) return "🔀";
-    if (txt.includes("ramp")) return "🛣";
+// ─────────────────────────────────────────────────
+// TURN-BY-TURN
+// ─────────────────────────────────────────────────
+const ICONS = {
+    "turn left": "⬅", "turn sharp left": "↙", "turn slight left": "↖",
+    "turn right": "➡", "turn sharp right": "↘", "turn slight right": "↗",
+    "straight": "⬆", "continue": "⬆",
+    "roundabout": "⭕", "rotary": "⭕",
+    "merge": "🔀", "ramp": "🛣",
+    "depart": "🚀", "arrive": "🏁",
+    "fork": "🍴", "end of road": "🔚",
+};
+
+function stepIcon(step) {
+    const m = step.maneuver || {};
+    const key = `${m.type||""} ${m.modifier||""}`.trim().toLowerCase();
+    for (const k of Object.keys(ICONS)) {
+        if (key.includes(k)) return ICONS[k];
+    }
     return "📍";
 }
 
-// ---------- build a clean instruction text ----------
-function buildInstructionText(step) {
-    const m = step.maneuver || {};
-    const type = m.type || "";
-    const modifier = m.modifier || "";
-    const rawInstr = m.instruction || step.instruction || "";
-    const road = step.name || "";
-    const dist = formatDistance(step.distance);
-
-    if (rawInstr && rawInstr.length > 3) {
-        const cleaned = rawInstr.replace(/\s+/g, " ").trim();
-        return `${cleaned}${dist ? " — " + dist : ""}`;
+function stepText(step) {
+    const m    = step.maneuver || {};
+    const instr = m.instruction || "";
+    if (instr.length > 2) {
+        return instr + (step.distance ? ` — ${fmtDist(step.distance)}` : "");
     }
-
-    let parts = [];
-    if (modifier) parts.push(modifier);
-    if (type && type !== modifier) parts.unshift(type);
-
-    let phrase = parts.length ? parts.join(" ") : "Continue";
-    if (road) phrase += ` onto ${road}`;
-    if (dist) phrase += ` — ${dist}`;
-
-    return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+    let txt = [m.type, m.modifier].filter(Boolean).join(" ");
+    if (step.name) txt += ` onto ${step.name}`;
+    if (step.distance) txt += ` — ${fmtDist(step.distance)}`;
+    return txt || "Continue";
 }
 
-// ---------- show turn-by-turn in sidebar ----------
-function showTurnByTurn(routeInfo) {
-    const container = document.getElementById("turn-list");
-    container.innerHTML = "";
+function fmtDist(m) {
+    return m >= 1000 ? (m/1000).toFixed(1) + " km" : Math.round(m) + " m";
+}
 
-    let steps = [];
+function showTurns(info) {
+    const list  = document.getElementById("turn-list");
+    const steps = info.steps || [];
+    list.innerHTML = "";
 
-    // Accept various shapes of stored step data
-    if (Array.isArray(routeInfo.steps) && typeof routeInfo.steps[0] === "string") {
-        steps = routeInfo.steps.map(s => ({ _rawText: s }));
-    } else if (routeInfo.legs?.[0]?.steps) {
-        steps = routeInfo.legs[0].steps;
-    } else if (routeInfo.steps) {
-        steps = routeInfo.steps;
+    if (!steps.length) {
+        list.innerHTML = "<li>No turn-by-turn available.</li>";
+    } else {
+        steps.forEach(step => {
+            const li = document.createElement("li");
+            li.innerHTML = `<span class="icon">${stepIcon(step)}</span> ${stepText(step)}`;
+            list.appendChild(li);
+        });
     }
-
-    if (!steps || steps.length === 0) {
-        const li = document.createElement("li");
-        li.innerText = "No instructions available.";
-        container.appendChild(li);
-        return;
-    }
-
-    steps.forEach((stepObj) => {
-        let text, icon;
-
-        if (stepObj._rawText) {
-            text = stepObj._rawText;
-            icon = getDirectionIconFromParts("", "", text);
-        } else {
-            text = buildInstructionText(stepObj);
-            icon = getDirectionIconFromParts(
-                stepObj.maneuver?.type,
-                stepObj.maneuver?.modifier,
-                stepObj.name
-            );
-        }
-
-        const li = document.createElement("li");
-        li.style.padding = "6px 0";
-        li.innerHTML = `<span style="font-size:20px; margin-right:8px;">${icon}</span> ${text}`;
-        container.appendChild(li);
-    });
 
     document.getElementById("sidebar").classList.add("open");
 }
 
-// ---------- update route list in sidebar ----------
-function updateSidebarRoutes(routesInfo, recommendedIndex) {
-    let html = `<h3>Route options</h3><div class="routes-list">`;
+// ─────────────────────────────────────────────────
+// AUTO REFRESH — 5 MIN
+// ─────────────────────────────────────────────────
+setInterval(loadAllData, 5 * 60 * 1000);
 
-    routesInfo.forEach((info, i) => {
-    const routeLabel = `Route ${i + 1}`; // now i is defined
-    const r = info.risk;
-    let riskLabel = (r.combined < 0.4) ? "Low" :
-                    (r.combined < 0.7) ? "Medium" : "High";
-    let color = (riskLabel === "Low") ? "green" :
-                (riskLabel === "Medium") ? "orange" : "red";
-
-    const recommended = (info.index === recommendedIndex)
-        ? " <strong>⭐ Recommended</strong>"
-        : "";
-
-    html += `
-        <div class="route-item" data-idx="${info.index}" 
-             style="margin-bottom:8px; padding:8px; border-radius:6px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <b>${routeLabel}</b>${recommended}
-                    <div style="font-size:12px; color:#666;">
-                        ${info.durationMin} min • ${info.distanceKm} km
-                    </div>
-                </div>
-                <div style="text-align:right;">
-                    <div style="color:${color}; font-weight:600;">
-                        ${r.combined.toFixed(2)} (${riskLabel})
-                    </div>
-                    <button class="show-turns-btn" data-idx="${info.index}"
-                            style="margin-top:6px; padding:4px 8px; cursor:pointer;">
-                        Show turns
-                    </button>
-                </div>
-            </div>
-        </div>
-    `;
-});
-
-
-    html += `</div><hr>`;
-    document.getElementById("risk-details").innerHTML = html;
-
-    document.querySelectorAll(".route-item").forEach(el => {
-        el.addEventListener("click", () => {
-            const idx = Number(el.dataset.idx);
-            const selected = routesInfo.find(r => r.index === idx);
-            highlightRoute(idx);
-            showRouteDetailsInSidebar(selected);
-        });
-    });
-
-    document.querySelectorAll(".show-turns-btn").forEach(btn => {
-        btn.addEventListener("click", ev => {
-            ev.stopPropagation();
-            const idx = Number(btn.dataset.idx);
-            const selected = routesInfo.find(r => r.index === idx);
-            showTurnByTurn(selected);
-        });
-    });
-
-    document.getElementById("sidebar").classList.add("open");
-}
-
-
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------   
-
-
-
-
-function renderRoutes(routesInfo, recommendedIndex) {
-    // Clear old routes
-    routeLayers.forEach(obj => map.removeLayer(obj.line));
-    routeLayers = [];
-
-    routesInfo.forEach((info, i) => {
-        // Convert coords
-        const latlngs = info.coords.map(c => ({ lat: c[1], lng: c[0] }));
-        const segments = splitRoute(latlngs);
-
-        const lines = [];
-
-        segments.forEach(seg => {
-            const mid = {
-                lat: (seg[0].lat + seg[1].lat) / 2,
-                lng: (seg[0].lng + seg[1].lng) / 2
-            };
-            const risk = getRiskAtPoint(mid.lat, mid.lng);
-
-            const line = L.polyline(
-                [
-                    [seg[0].lat, seg[0].lng],
-                    [seg[1].lat, seg[1].lng]
-                ],
-                {
-                    color: getColor(risk),
-
-                    weight: 6,
-                    opacity: 0.8
-                }
-            ).addTo(map);
-
-            // Bind tooltip showing route number
-            line.bindTooltip(`Route ${i + 1}`, {
-                permanent: false,
-                direction: "top",
-                className: "route-tooltip",
-                offset: [0, -10]
-            });
-
-            line.on("click", () => showTurnByTurn(info));
-
-            lines.push(line);
-            routeLayers.push({ line, index: i });
-        });
-    });
-
-    // Fit map to first route
-    if (routesInfo.length) map.fitBounds(
-        routesInfo[0].coords.map(c => [c[1], c[0]])
-    );
-}
-
-
-
-
-
-function highlightRoute(index) {
-    routeLayers.forEach(obj => {
-        const isActive = (obj.index === index);
-        obj.layer.setStyle({
-            color: isActive ? "#ef4444" : "#888888",   // active red, others grey
-            weight: isActive ? 7 : 4,
-            opacity: isActive ? 1 : 0.5
-        });
-    });
-}
-
-
-
-
-
-
-
-// simple sampler: pick one every N points to control workload
-function sampleRouteCoords(coords, step = 10) {
-    // coords: array of [lng, lat] or {lat,lng} depending on source — normalize
-    const points = [];
-    for (let i = 0; i < coords.length; i += step) {
-        const c = coords[i];
-        // OSRM geojson uses [lng, lat]
-        const lat = (c.lat !== undefined) ? c.lat : c[1];
-        const lng = (c.lng !== undefined) ? c.lng : c[0];
-        points.push({ lat, lng });
-    }
-    return points;
-}
-
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-//--------------------------------------------------------- route colors
-function splitRoute(latlngs) {
-    let segments = [];
-    for (let i = 0; i < latlngs.length - 1; i++) {
-        let start = latlngs[i];
-        let end = latlngs[i+1];
-        segments.push([start, end]);
-    }
-    return segments;
-}
-
-function riskForSegment(segment) {
-    const mid = {
-        lat: (segment[0].lat + segment[1].lat) / 2,
-        lng: (segment[0].lng + segment[1].lng) / 2
-    };
-    return getRiskValueFromData(mid.lat, mid.lng);
-}
-
-function getColor(risk) {
-    if (risk < 0.2) return "green";
-    if (risk < 0.4) return "yellow";
-    if (risk < 0.6) return "orange";
-    if (risk < 0.8) return "red";
-    return "darkred";
-}
-// 1. Convert OSRM coords → Leaflet coords
-//const coords = data.routes[0].geometry.coordinates.map(c => ({
-///    lat: c[1],
-//    lng: c[0]
-//}));
-
-// 2. Split into segments
-//const segments = splitRoute(coords);
-
-// 3. Draw colored route pieces
-//segments.forEach(seg => {
-//    let risk = riskForSegment(seg);
-//    L.polyline(seg, {
- //       color: getColor(risk),
-//       weight: 6
-//    }).addTo(map);
-//});
-
-function getRiskAtPoint(lat, lng) {
-    const riskObj = computeRiskForRoute([[lng, lat]]); // pass as [[lng, lat]]
-    return riskObj.combined; // number between 0 and 1
-}
-function drawSegmentedRoute(coords, routeIndex) {
-    const latlngs = coords.map(c => ({ lat: c[1], lng: c[0] }));
-    const segments = splitRoute(latlngs);
-    const lines = [];
-
-    segments.forEach((seg, i) => {
-        const mid = { lat: (seg[0].lat + seg[1].lat)/2, lng: (seg[0].lng + seg[1].lng)/2 };
-        const risk = getRiskAtPoint(mid.lat, mid.lng);
-
-        const line = L.polyline(
-            [[seg[0].lat, seg[0].lng], [seg[1].lat, seg[1].lng]],
-            { color: getColor(risk), weight: 6, opacity: 0.8 }
-        ).addTo(map);
-
-        // Only label the first segment with the route number
-        if (i === 0) {
-            line.bindTooltip(`Route ${routeIndex + 1}`, {
-                className: "route-tooltip",
-                permanent: true,
-                direction: "center",
-                offset: [0, -10]
-            });
-        }
-
-        lines.push(line);
-    });
-
-    return lines;
-}
-
-
-
-
-
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-//-----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-
-
+// ─────────────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────────────
+loadAllData();
 </script>
-
 </body>
 </html>
-
-
-
-
-
