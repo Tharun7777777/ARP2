@@ -185,21 +185,49 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 
 Promise.all([
-    fetch("accidents.json").then(r => r.json()),
-    fetch("crime.json").then(r => r.json()),
-    fetch("pollution.json").then(r => r.json()),
-    fetch("traffic.json").then(r => r.json()),
-    fetch("wifi.json").then(r => r.json()),
-    fetch("hospital.json").then(r => r.json())
-]).then(([accData, crimeData, pollData, trafficData, wifiData, hospData]) => {
+// Show loading indicator while fetching live data
+const loadingDiv = document.createElement("div");
+loadingDiv.id = "loading-indicator";
+loadingDiv.innerHTML = `
+    <div style="
+        position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+        background:white; padding:20px 30px; border-radius:12px;
+        box-shadow:0 4px 20px rgba(0,0,0,0.2); z-index:99999;
+        font-family:Arial; font-size:16px; text-align:center;
+    ">
+        ⏳ Loading live map data...<br>
+        <small style="color:#888">Fetching real-time traffic, pollution & hazards</small>
+    </div>`;
+document.body.appendChild(loadingDiv);
 
-    // assign globally
-    acc = accData;
-    crime = crimeData;
-    poll = pollData;
-    traffic = trafficData;
-    wifi = wifiData;
-    hosp = hospData;
+async function loadAllData() {
+    const [accData, pollData, trafficData, hospData] = await Promise.all([
+        fetch("/api/accidents").then(r => r.json()),
+        fetch("/api/pollution").then(r => r.json()),
+        fetch("/api/traffic").then(r => r.json()),
+        fetch("hospital.json").then(r => r.json())
+    ]);
+
+    acc      = accData;
+    poll     = pollData;
+    traffic  = trafficData;
+    hosp     = hospData;
+
+    // Remove loading indicator
+    document.getElementById("loading-indicator")?.remove();
+
+    initMap();
+}
+
+loadAllData();
+
+// Auto refresh every 5 minutes
+setInterval(() => {
+    console.log("🔄 Refreshing live data...");
+    loadAllData();
+}, 5 * 60 * 1000);
+
+function initMap() {
 
 
     // CREATE HEATLAYERS
@@ -219,13 +247,12 @@ Promise.all([
     for (let i = 0; i < maxLen; i++) {
         if (!acc[i]?.lat || !acc[i]?.lng) continue;
 
-        const combinedValue =
-            (acc[i]?.value || 0) * 0.25 +
-            (crime[i]?.value || 0) * 0.20 +
-            (traffic[i]?.value || 0) * 0.20 +
-            (poll[i]?.value || 0) * 0.15 +
-            (hosp[i]?.value || 0) * 0.10 +
-            (wifi[i]?.value || 0) * 0.10;
+       // Redistributed weights without crime + wifi
+const combinedValue =
+    (acc[i]?.value     || 0) * 0.35 +
+    (traffic[i]?.value || 0) * 0.30 +
+    (poll[i]?.value    || 0) * 0.20 +
+    (hosp[i]?.value    || 0) * 0.15;
 
         combinedPoints.push([acc[i].lat, acc[i].lng, combinedValue]);
     }
@@ -281,30 +308,24 @@ map.on("click", (e) => {
     const { lat, lng } = e.latlng;
 
     const a = getClosestPoint(acc, lat, lng)?.value || 0;
-    const c = getClosestPoint(crime, lat, lng)?.value || 0;
-    const t = getClosestPoint(traffic, lat, lng)?.value || 0;
-    const p = getClosestPoint(poll, lat, lng)?.value || 0;
-    const h = getClosestPoint(hosp, lat, lng)?.value || 0;
-    const w = getClosestPoint(wifi, lat, lng)?.value || 0;
+const t = getClosestPoint(traffic, lat, lng)?.value || 0;
+const p = getClosestPoint(poll, lat, lng)?.value || 0;
+const h = getClosestPoint(hosp, lat, lng)?.value || 0;
 
-    const combined =
-        a * 0.25 +
-        c * 0.20 +
-        t * 0.20 +
-        p * 0.15 +
-        h * 0.10 +
-        w * 0.10;
+const combined =
+    a * 0.35 +
+    t * 0.30 +
+    p * 0.20 +
+    h * 0.15;
 
-    const popupHTML = `
-        <b>📍 Risk Analysis for Selected Location</b><br><br>
-        🚧 Accidents: <b>${a}</b><br>
-        🛑 Crime: <b>${c}</b><br>
-        🚦 Traffic: <b>${t}</b><br>
-        🏭 Pollution: <b>${p}</b><br>
-        🏥 Hospital Load: <b>${h}</b><br>
-        📶 WiFi Score: <b>${w}</b><br><br>
-        🔥 <b>Total Risk Score: ${combined.toFixed(2)}</b>
-    `;
+const popupHTML = `
+    <b>📍 Risk Analysis for Selected Location</b><br><br>
+    🚧 Accidents: <b>${a}</b><br>
+    🚦 Traffic: <b>${t}</b><br>
+    🏭 Pollution: <b>${p}</b><br>
+    🏥 Hospital Load: <b>${h}</b><br><br>
+    🔥 <b>Total Risk Score: ${combined.toFixed(2)}</b>
+`;
 
     L.popup()
         .setLatLng([lat, lng])
@@ -469,12 +490,10 @@ function computeRiskForRoute(routeCoords) {
     const wifiAvg = wifiSum / n;
 
     const combined =
-        accAvg * 0.25 +
-        crimeAvg * 0.20 +
-        trafficAvg * 0.20 +
-        pollAvg * 0.15 +
-        hospAvg * 0.10 +
-        wifiAvg * 0.10;
+    accAvg     * 0.35 +
+    trafficAvg * 0.30 +
+    pollAvg    * 0.20 +
+    hospAvg    * 0.15;
 
     return {
         accAvg, crimeAvg, trafficAvg, pollAvg, hospAvg, wifiAvg, combined, sampled
@@ -920,6 +939,7 @@ function drawSegmentedRoute(coords, routeIndex) {
 
 </body>
 </html>
+
 
 
 
