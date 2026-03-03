@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaflet Map</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+
+        #sidebar {
+    position: fixed;
+    top: 0;
+    right: -350px; 
+    width: 320px;
+    height: 100vh;
+    background: #ffffff;
+    box-shadow: -4px 0 15px rgba(0,0,0,0.2);
+    padding: 20px;
+    transition: 0.35s;
+    overflow-y: auto;
+    font-family: Arial;
+    z-index: 9999;
+
+}
+
+#sidebar.open {
+    right: 0;
+}
+
+#sidebar h2 {
+    margin-top: 0;
+    font-size: 22px;
+}
+
+#risk-score {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+#route-box {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 9999;
+    background: white;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+}
+
+#route-box input {
+    width: 160px;
+    margin: 4px 0;
+    padding: 6px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    
+}
+
+
+/* Tooltip for route numbers */
+.route-tooltip {
+    background: rgba(255, 255, 255, 0.9);
+    color: #111;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    border: 1px solid #ddd;
+    pointer-events: none; /* avoids blocking mouse */
+}
+
+.route-tooltip.leaflet-tooltip-bottom::after,
+.route-tooltip.leaflet-tooltip-top::after {
+    border-top-color: rgba(255, 255, 255, 0.9); /* matches tooltip bg */
+}
+
+
+
+    </style>
+</head>
+<body>
+
+
+
+<div id="map"></div>
+
+<div id="sidebar" class="sidebar">
+    <div class="sidebar-header">
+        <b>${routeLabel}</b>${recommended}
+
+        <button id="closeSidebar" class="close-btn">✕</button>
+    </div>
+
+    <div id="route-content">
+        <div id="risk-score"></div>
+        <div id="risk-details"></div>
+        <div id="risk-advice"></div>
+        <ol id="turn-list"></ol>
+    </div>
+</div>
+
+
+<!--routing-->
+<div id="route-box">
+    <input id="start" placeholder="Start location" />
+    <input id="end" placeholder="End location" />
+    <button onclick="getRouteMultiple()">Find Route</button>
+</div>
+
+
+
+<script src="traffic.js"></script>
+
+
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+    const closeBtn = document.getElementById("closeSidebar");
+    const sidebar = document.getElementById("sidebar");
+
+    if (closeBtn && sidebar) {
+        closeBtn.onclick = () => {
+            sidebar.classList.remove("open");
+        };
+    }
+});
+
+
+let acc = [];
+let crime = [];
+let poll = [];
+let traffic = [];
+let wifi = [];
+let hosp = [];
+
+
+
+const heatStyle = {
+    radius: 60,
+    blur: 35,
+    maxZoom: 17,
+    minOpacity: 0.4,
+    gradient: {
+        0.2: "blue",
+        0.4: "cyan",
+        0.6: "lime",
+        0.8: "yellow",
+        1.0: "red"
+    }
+};
+
+const map = L.map("map");
+
+// ⭐ GLOBAL: Risk Advice Function (must be placed BEFORE usage)
+function getAdvice(score) {
+    if (score > 0.75) {
+        return "<p style='color:red'><b>⚠ High Risk:</b> Avoid this route if possible.</p>";
+    }
+    if (score > 0.50) {
+        return "<p style='color:orange'><b>⚠ Medium Risk:</b> Conditions may be unsafe.</p>";
+    }
+    return "<p style='color:green'><b>✓ Low Risk:</b> Good and safe route.</p>";
+}
+
+
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19
+}).addTo(map);
+
+
+Promise.all([
+    fetch("accidents.json").then(r => r.json()),
+    fetch("crime.json").then(r => r.json()),
+    fetch("pollution.json").then(r => r.json()),
+    fetch("traffic.json").then(r => r.json()),
+    fetch("wifi.json").then(r => r.json()),
+    fetch("hospital.json").then(r => r.json())
+]).then(([accData, crimeData, pollData, trafficData, wifiData, hospData]) => {
+
+    // assign globally
+    acc = accData;
+    crime = crimeData;
+    poll = pollData;
+    traffic = trafficData;
+    wifi = wifiData;
+    hosp = hospData;
+
+
+    // CREATE HEATLAYERS
+    const accidentLayer = L.heatLayer(acc.map(d => [d.lat, d.lng, d.value]), heatStyle);
+    const crimeLayer = L.heatLayer(crime.map(d => [d.lat, d.lng, d.value]), heatStyle);
+    const pollutionLayer = L.heatLayer(poll.map(d => [d.lat, d.lng, d.value]), heatStyle);
+    const trafficLayer = L.heatLayer(traffic.map(d => [d.lat, d.lng, d.value]), heatStyle);
+    const wifiLayer = L.heatLayer(wifi.map(d => [d.lat, d.lng, d.value]), heatStyle);
+    const hospitalLayer = L.heatLayer(hosp.map(d => [d.lat, d.lng, d.value]), heatStyle);
+
+
+    // 🔥 COMBINED RISK LAYER
+    combinedPoints = [];
+
+    const maxLen = Math.min(acc.length, crime.length, poll.length, traffic.length, wifi.length, hosp.length);
+
+    for (let i = 0; i < maxLen; i++) {
+        if (!acc[i]?.lat || !acc[i]?.lng) continue;
+
+        const combinedValue =
+            (acc[i]?.value || 0) * 0.25 +
+            (crime[i]?.value || 0) * 0.20 +
+            (traffic[i]?.value || 0) * 0.20 +
+            (poll[i]?.value || 0) * 0.15 +
+            (hosp[i]?.value || 0) * 0.10 +
+            (wifi[i]?.value || 0) * 0.10;
+
+        combinedPoints.push([acc[i].lat, acc[i].lng, combinedValue]);
+    }
+
+    const combinedLayer = L.heatLayer(combinedPoints, heatStyle);
+
+    // Fit map to full data extent
+    map.fitBounds(combinedPoints.map(p => [p[0], p[1]]));
+
+
+    // ⭐ TOOLTIP HOVER LAYERGROUPS
+    const accidentHover = L.layerGroup().addTo(map);
+    const crimeHover = L.layerGroup().addTo(map);
+    const trafficHover = L.layerGroup().addTo(map);
+    const pollutionHover = L.layerGroup().addTo(map);
+    const hospitalHover = L.layerGroup().addTo(map);
+    const combinedHover = L.layerGroup().addTo(map);
+
+    
+
+    // Helper for hover markers
+    function addHoverMarkers(dataset, layer, label) {
+        dataset.forEach(p => {
+            L.circleMarker([p.lat, p.lng], {
+                radius: 8,
+                color: "transparent",
+                fillColor: "transparent",
+                fillOpacity: 0.05
+            })
+            .bindTooltip(`${label}: ${p.value}`, { permanent: false })
+            .addTo(layer);
+        });
+    }
+
+    
+addHoverMarkers(acc, accidentHover, "Accidents");
+addHoverMarkers(crime, crimeHover, "Crime Rate");
+addHoverMarkers(traffic, trafficHover, "Traffic Level");
+addHoverMarkers(poll, pollutionHover, "Pollution Index");
+addHoverMarkers(hosp, hospitalHover, "Hospital Load");
+addHoverMarkers(
+  combinedPoints.map(p => ({ lat: p[0], lng: p[1], value: p[2] })),
+  combinedHover,
+  "Combined Risk"
+);
+
+
+//on click pop up menu
+
+
+// CLICK EVENT → Show risk popup
+map.on("click", (e) => {
+    const { lat, lng } = e.latlng;
+
+    const a = getClosestPoint(acc, lat, lng)?.value || 0;
+    const c = getClosestPoint(crime, lat, lng)?.value || 0;
+    const t = getClosestPoint(traffic, lat, lng)?.value || 0;
+    const p = getClosestPoint(poll, lat, lng)?.value || 0;
+    const h = getClosestPoint(hosp, lat, lng)?.value || 0;
+    const w = getClosestPoint(wifi, lat, lng)?.value || 0;
+
+    const combined =
+        a * 0.25 +
+        c * 0.20 +
+        t * 0.20 +
+        p * 0.15 +
+        h * 0.10 +
+        w * 0.10;
+
+    const popupHTML = `
+        <b>📍 Risk Analysis for Selected Location</b><br><br>
+        🚧 Accidents: <b>${a}</b><br>
+        🛑 Crime: <b>${c}</b><br>
+        🚦 Traffic: <b>${t}</b><br>
+        🏭 Pollution: <b>${p}</b><br>
+        🏥 Hospital Load: <b>${h}</b><br>
+        📶 WiFi Score: <b>${w}</b><br><br>
+        🔥 <b>Total Risk Score: ${combined.toFixed(2)}</b>
+    `;
+
+    L.popup()
+        .setLatLng([lat, lng])
+        .setContent(popupHTML)
+        .openOn(map);
+
+
+
+
+});
+
+
+
+
+
+
+    // LAYER CONTROL
+    const overlays = {
+        "Accidents": accidentLayer,
+        "Crime": crimeLayer,
+        "Pollution": pollutionLayer,
+        "Traffic": trafficLayer,
+        "WiFi Strength": wifiLayer,
+        "Hospital Load": hospitalLayer,
+        "Combined Risk": combinedLayer,
+
+        // Hover layers
+        "ℹ️ Accidents Info": accidentHover,
+        "ℹ️ Crime Info": crimeHover,
+        "ℹ️ Traffic Info": trafficHover,
+        "ℹ️ Pollution Info": pollutionHover,
+        "ℹ️ Hospital Info": hospitalHover,
+        "ℹ️ Combined Info": combinedHover
+    };
+
+    L.control.layers(null, overlays).addTo(map);
+
+});
+
+
+
+
+// USER LOCATION
+map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
+
+map.on("locationfound", e => {
+    L.marker(e.latlng).addTo(map).bindPopup("📍 Your Location").openPopup();
+});
+
+map.on("locationerror", () => {
+    alert("Unable to find location. Showing India.");
+    map.setView([20.5937, 78.9629], 5);
+});
+
+
+let combinedPoints = []; // make it global
+
+
+
+function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+
+    const a =
+        Math.sin(dLat / 2)**2 +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2)**2;
+
+    return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function sampleRouteCoords(coords, step = 10) {
+    const result = [];
+    for (let i = 0; i < coords.length; i += step) {
+        result.push({ lng: coords[i][0], lat: coords[i][1] });
+    }
+    return result;
+}
+
+
+//Fetch Route Using OSRM API
+// Fetch multiple routes (OSRM alternatives)
+async function getRouteMultiple() {
+    const startText = document.getElementById("start").value;
+    const endText = document.getElementById("end").value;
+    if (!startText || !endText) return alert("Enter start & end location");
+
+    const s = await geocode(startText);
+    const e = await geocode(endText);
+    if (!s || !e) return alert("Location not found");
+
+    // alternatives=true requests multiple routes from OSRM
+const url = `https://router.project-osrm.org/route/v1/driving/${s.lng},${s.lat};${e.lng},${e.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    // data.routes is an array of route objects
+    if (!data || !data.routes || data.routes.length === 0) {
+        return alert("No routes returned");
+    }
+
+    processRoutes(data.routes);
+}
+
+
+
+//Basic Geocoder (Turn any text → Coordinates)
+async function geocode(place) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${place}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon)
+    };
+}
+
+// Find closest point from dataset
+function getClosestPoint(dataset, lat, lng) {
+    let closest = null;
+    let minDist = Infinity;
+
+    dataset.forEach(p => {
+        const dist = getDistance(lat, lng, p.lat, p.lng);
+        if (dist < minDist) {
+            minDist = dist;
+            closest = p;
+        }
+    });
+
+    return closest;
+}
+
+
+function computeRiskForRoute(routeCoords) {
+    // routeCoords: array of [lng, lat] OR objects; sample them first
+    const sampled = sampleRouteCoords(routeCoords, 10);
+
+    let accSum=0, crimeSum=0, trafficSum=0, pollSum=0, hospSum=0, wifiSum=0;
+    sampled.forEach(pt => {
+        const lat = pt.lat;
+        const lng = pt.lng;
+
+        accSum     += getClosestPoint(acc, lat, lng)?.value || 0;
+        crimeSum   += getClosestPoint(crime, lat, lng)?.value || 0;
+        trafficSum += getClosestPoint(traffic, lat, lng)?.value || 0;
+        pollSum    += getClosestPoint(poll, lat, lng)?.value || 0;
+        hospSum    += getClosestPoint(hosp, lat, lng)?.value || 0;
+        wifiSum    += getClosestPoint(wifi, lat, lng)?.value || 0;
+    });
+
+    const n = sampled.length || 1;
+    const accAvg = accSum / n;
+    const crimeAvg = crimeSum / n;
+    const trafficAvg = trafficSum / n;
+    const pollAvg = pollSum / n;
+    const hospAvg = hospSum / n;
+    const wifiAvg = wifiSum / n;
+
+    const combined =
+        accAvg * 0.25 +
+        crimeAvg * 0.20 +
+        trafficAvg * 0.20 +
+        pollAvg * 0.15 +
+        hospAvg * 0.10 +
+        wifiAvg * 0.10;
+
+    return {
+        accAvg, crimeAvg, trafficAvg, pollAvg, hospAvg, wifiAvg, combined, sampled
+    };
+}
+
+
+function generateRouteReason(routeInfo, otherRoutes) {
+    // routeInfo: the recommended route
+    // otherRoutes: array of other routeInfos to compare
+
+    if (!otherRoutes || otherRoutes.length === 0) return "Lowest overall risk compared to alternatives.";
+
+    const other = otherRoutes[0]; // compare with first alternative
+    const reasons = [];
+
+    if (routeInfo.risk.accAvg < other.risk.accAvg) {
+        reasons.push("🚧 Avoids high-accident zones");
+    }
+    if (routeInfo.risk.crimeAvg < other.risk.crimeAvg) {
+        reasons.push("🛑 Passes through safer roads with lower crime");
+    }
+    if (routeInfo.risk.pollAvg < other.risk.pollAvg) {
+        reasons.push("🏭 Lower pollution along the route");
+    }
+    if (routeInfo.risk.trafficAvg < other.risk.trafficAvg) {
+        reasons.push("🚦 Less congested traffic");
+    }
+    if (routeInfo.risk.hospAvg < other.risk.hospAvg) {
+        reasons.push("🏥 Fewer hospital load areas (less emergency traffic)");
+    }
+    if (routeInfo.risk.wifiAvg > other.risk.wifiAvg) {
+        reasons.push("📶 Better connectivity/WiFi coverage");
+    }
+
+    if (reasons.length === 0) return "Overall, this route is slightly safer or similar to other options.";
+
+    return reasons.join(", ") + ".";
+}
+
+
+// global holders
+let routeLayers = []; // L.geoJSON layers for routes
+let routesInfo = [];  // metadata for sidebar
+
+async function processRoutes(osrmRoutes) {
+    // clear previous
+    routeLayers.forEach(l => map.removeLayer(l.layer || l));
+    routeLayers = [];
+    routesInfo = [];
+
+    // For each returned route compute metrics
+    osrmRoutes.forEach((r, i) => {
+        const coords = r.geometry.coordinates;
+        const risk = computeRiskForRoute(coords);
+        const steps = r.legs[0]?.steps?.map(s => {
+    if (s.maneuver?.instruction) return s.maneuver.instruction;
+    // fallback: construct instruction from type + modifier + name
+    let instr = '';
+    if (s.maneuver?.type) instr += s.maneuver.type;
+    if (s.maneuver?.modifier) instr += ' ' + s.maneuver.modifier;
+    if (s.name) instr += ' onto ' + s.name;
+    return instr || 'Continue';
+}) || [];
+
+
+        const info = {
+            index: i,
+            coords,
+            durationMin: Math.round(r.duration / 60),
+            distanceKm: (r.distance / 1000).toFixed(2),
+            risk,
+            steps
+        };
+
+        routesInfo.push(info);
+    });
+
+    // pick recommended: smallest combined risk
+    // find recommended route by lowest risk, but keep original order
+const recommendedRoute = routesInfo.reduce((min, r) => r.risk.combined < min.risk.combined ? r : min, routesInfo[0]);
+const recommendedIndex = recommendedRoute.index;
+
+
+    renderRoutes(routesInfo, recommendedIndex);
+    updateSidebarRoutes(routesInfo, recommendedIndex);
+
+// After computing and sorting routes
+const recommended = routesInfo[0]; 
+const others = routesInfo.slice(1);
+
+const reasonText = generateRouteReason(recommended, others);
+
+document.getElementById("risk-advice").innerHTML = `<b>Why Recommended:</b> ${reasonText}`;
+
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------- route instructions
+
+
+
+
+
+
+// ---------- helper: icon from text ----------
+function getDirectionIconFromParts(type, modifier, name) {
+    const txt = `${type || ""} ${modifier || ""} ${name || ""}`.toLowerCase();
+    if (txt.includes("left")) return "⬅";
+    if (txt.includes("right")) return "➡";
+    if (txt.includes("straight")) return "⬆";
+    if (txt.includes("slight left")) return "↖";
+    if (txt.includes("slight right")) return "↗";
+    if (txt.includes("roundabout")) return "⭕";
+    if (txt.includes("merge")) return "🔀";
+    if (txt.includes("ramp")) return "🛣";
+    return "📍";
+}
+
+// ---------- build a clean instruction text ----------
+function buildInstructionText(step) {
+    const m = step.maneuver || {};
+    const type = m.type || "";
+    const modifier = m.modifier || "";
+    const rawInstr = m.instruction || step.instruction || "";
+    const road = step.name || "";
+    const dist = formatDistance(step.distance);
+
+    if (rawInstr && rawInstr.length > 3) {
+        const cleaned = rawInstr.replace(/\s+/g, " ").trim();
+        return `${cleaned}${dist ? " — " + dist : ""}`;
+    }
+
+    let parts = [];
+    if (modifier) parts.push(modifier);
+    if (type && type !== modifier) parts.unshift(type);
+
+    let phrase = parts.length ? parts.join(" ") : "Continue";
+    if (road) phrase += ` onto ${road}`;
+    if (dist) phrase += ` — ${dist}`;
+
+    return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
+// ---------- show turn-by-turn in sidebar ----------
+function showTurnByTurn(routeInfo) {
+    const container = document.getElementById("turn-list");
+    container.innerHTML = "";
+
+    let steps = [];
+
+    // Accept various shapes of stored step data
+    if (Array.isArray(routeInfo.steps) && typeof routeInfo.steps[0] === "string") {
+        steps = routeInfo.steps.map(s => ({ _rawText: s }));
+    } else if (routeInfo.legs?.[0]?.steps) {
+        steps = routeInfo.legs[0].steps;
+    } else if (routeInfo.steps) {
+        steps = routeInfo.steps;
+    }
+
+    if (!steps || steps.length === 0) {
+        const li = document.createElement("li");
+        li.innerText = "No instructions available.";
+        container.appendChild(li);
+        return;
+    }
+
+    steps.forEach((stepObj) => {
+        let text, icon;
+
+        if (stepObj._rawText) {
+            text = stepObj._rawText;
+            icon = getDirectionIconFromParts("", "", text);
+        } else {
+            text = buildInstructionText(stepObj);
+            icon = getDirectionIconFromParts(
+                stepObj.maneuver?.type,
+                stepObj.maneuver?.modifier,
+                stepObj.name
+            );
+        }
+
+        const li = document.createElement("li");
+        li.style.padding = "6px 0";
+        li.innerHTML = `<span style="font-size:20px; margin-right:8px;">${icon}</span> ${text}`;
+        container.appendChild(li);
+    });
+
+    document.getElementById("sidebar").classList.add("open");
+}
+
+// ---------- update route list in sidebar ----------
+function updateSidebarRoutes(routesInfo, recommendedIndex) {
+    let html = `<h3>Route options</h3><div class="routes-list">`;
+
+    routesInfo.forEach((info, i) => {
+    const routeLabel = `Route ${i + 1}`; // now i is defined
+    const r = info.risk;
+    let riskLabel = (r.combined < 0.4) ? "Low" :
+                    (r.combined < 0.7) ? "Medium" : "High";
+    let color = (riskLabel === "Low") ? "green" :
+                (riskLabel === "Medium") ? "orange" : "red";
+
+    const recommended = (info.index === recommendedIndex)
+        ? " <strong>⭐ Recommended</strong>"
+        : "";
+
+    html += `
+        <div class="route-item" data-idx="${info.index}" 
+             style="margin-bottom:8px; padding:8px; border-radius:6px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <b>${routeLabel}</b>${recommended}
+                    <div style="font-size:12px; color:#666;">
+                        ${info.durationMin} min • ${info.distanceKm} km
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="color:${color}; font-weight:600;">
+                        ${r.combined.toFixed(2)} (${riskLabel})
+                    </div>
+                    <button class="show-turns-btn" data-idx="${info.index}"
+                            style="margin-top:6px; padding:4px 8px; cursor:pointer;">
+                        Show turns
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+});
+
+
+    html += `</div><hr>`;
+    document.getElementById("risk-details").innerHTML = html;
+
+    document.querySelectorAll(".route-item").forEach(el => {
+        el.addEventListener("click", () => {
+            const idx = Number(el.dataset.idx);
+            const selected = routesInfo.find(r => r.index === idx);
+            highlightRoute(idx);
+            showRouteDetailsInSidebar(selected);
+        });
+    });
+
+    document.querySelectorAll(".show-turns-btn").forEach(btn => {
+        btn.addEventListener("click", ev => {
+            ev.stopPropagation();
+            const idx = Number(btn.dataset.idx);
+            const selected = routesInfo.find(r => r.index === idx);
+            showTurnByTurn(selected);
+        });
+    });
+
+    document.getElementById("sidebar").classList.add("open");
+}
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------   
+
+
+
+
+function renderRoutes(routesInfo, recommendedIndex) {
+    // Clear old routes
+    routeLayers.forEach(obj => map.removeLayer(obj.line));
+    routeLayers = [];
+
+    routesInfo.forEach((info, i) => {
+        // Convert coords
+        const latlngs = info.coords.map(c => ({ lat: c[1], lng: c[0] }));
+        const segments = splitRoute(latlngs);
+
+        const lines = [];
+
+        segments.forEach(seg => {
+            const mid = {
+                lat: (seg[0].lat + seg[1].lat) / 2,
+                lng: (seg[0].lng + seg[1].lng) / 2
+            };
+            const risk = getRiskAtPoint(mid.lat, mid.lng);
+
+            const line = L.polyline(
+                [
+                    [seg[0].lat, seg[0].lng],
+                    [seg[1].lat, seg[1].lng]
+                ],
+                {
+                    color: getColor(risk),
+
+                    weight: 6,
+                    opacity: 0.8
+                }
+            ).addTo(map);
+
+            // Bind tooltip showing route number
+            line.bindTooltip(`Route ${i + 1}`, {
+                permanent: false,
+                direction: "top",
+                className: "route-tooltip",
+                offset: [0, -10]
+            });
+
+            line.on("click", () => showTurnByTurn(info));
+
+            lines.push(line);
+            routeLayers.push({ line, index: i });
+        });
+    });
+
+    // Fit map to first route
+    if (routesInfo.length) map.fitBounds(
+        routesInfo[0].coords.map(c => [c[1], c[0]])
+    );
+}
+
+
+
+
+
+function highlightRoute(index) {
+    routeLayers.forEach(obj => {
+        const isActive = (obj.index === index);
+        obj.layer.setStyle({
+            color: isActive ? "#ef4444" : "#888888",   // active red, others grey
+            weight: isActive ? 7 : 4,
+            opacity: isActive ? 1 : 0.5
+        });
+    });
+}
+
+
+
+
+
+
+
+// simple sampler: pick one every N points to control workload
+function sampleRouteCoords(coords, step = 10) {
+    // coords: array of [lng, lat] or {lat,lng} depending on source — normalize
+    const points = [];
+    for (let i = 0; i < coords.length; i += step) {
+        const c = coords[i];
+        // OSRM geojson uses [lng, lat]
+        const lat = (c.lat !== undefined) ? c.lat : c[1];
+        const lng = (c.lng !== undefined) ? c.lng : c[0];
+        points.push({ lat, lng });
+    }
+    return points;
+}
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------
+//--------------------------------------------------------- route colors
+function splitRoute(latlngs) {
+    let segments = [];
+    for (let i = 0; i < latlngs.length - 1; i++) {
+        let start = latlngs[i];
+        let end = latlngs[i+1];
+        segments.push([start, end]);
+    }
+    return segments;
+}
+
+function riskForSegment(segment) {
+    const mid = {
+        lat: (segment[0].lat + segment[1].lat) / 2,
+        lng: (segment[0].lng + segment[1].lng) / 2
+    };
+    return getRiskValueFromData(mid.lat, mid.lng);
+}
+
+function getColor(risk) {
+    if (risk < 0.2) return "green";
+    if (risk < 0.4) return "yellow";
+    if (risk < 0.6) return "orange";
+    if (risk < 0.8) return "red";
+    return "darkred";
+}
+// 1. Convert OSRM coords → Leaflet coords
+//const coords = data.routes[0].geometry.coordinates.map(c => ({
+///    lat: c[1],
+//    lng: c[0]
+//}));
+
+// 2. Split into segments
+//const segments = splitRoute(coords);
+
+// 3. Draw colored route pieces
+//segments.forEach(seg => {
+//    let risk = riskForSegment(seg);
+//    L.polyline(seg, {
+ //       color: getColor(risk),
+//       weight: 6
+//    }).addTo(map);
+//});
+
+function getRiskAtPoint(lat, lng) {
+    const riskObj = computeRiskForRoute([[lng, lat]]); // pass as [[lng, lat]]
+    return riskObj.combined; // number between 0 and 1
+}
+function drawSegmentedRoute(coords, routeIndex) {
+    const latlngs = coords.map(c => ({ lat: c[1], lng: c[0] }));
+    const segments = splitRoute(latlngs);
+    const lines = [];
+
+    segments.forEach((seg, i) => {
+        const mid = { lat: (seg[0].lat + seg[1].lat)/2, lng: (seg[0].lng + seg[1].lng)/2 };
+        const risk = getRiskAtPoint(mid.lat, mid.lng);
+
+        const line = L.polyline(
+            [[seg[0].lat, seg[0].lng], [seg[1].lat, seg[1].lng]],
+            { color: getColor(risk), weight: 6, opacity: 0.8 }
+        ).addTo(map);
+
+        // Only label the first segment with the route number
+        if (i === 0) {
+            line.bindTooltip(`Route ${routeIndex + 1}`, {
+                className: "route-tooltip",
+                permanent: true,
+                direction: "center",
+                offset: [0, -10]
+            });
+        }
+
+        lines.push(line);
+    });
+
+    return lines;
+}
+
+
+
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------
+//-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+</script>
+
+</body>
+</html>
+
+
+
+
