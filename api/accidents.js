@@ -93,3 +93,31 @@ function getFallbackGrid() {
   }
   return points;
 }
+```
+
+---
+
+### What this does
+
+Queries OpenStreetMap for **real physical hazard nodes** in your region:
+
+| Node Type | What it means | Risk Score |
+|---|---|---|
+| `accident` | Recorded accident spot | 1.0 🔴 |
+| `hazard` | Marked road hazard | 0.9 🔴 |
+| `junction` | Road junction | 0.7 🟠 |
+| `speed_camera` | Speed enforcement zone | 0.6 🟠 |
+| `traffic_signals` | Signaled intersection | 0.5 🟡 |
+| `crossing` | Pedestrian crossing | 0.4 🟡 |
+
+- **No API key needed** — Overpass is fully open
+- If Overpass is slow or down, the fallback grid kicks in automatically so your map never breaks
+- Returns same `{lat, lng, value}` format as before
+
+---
+
+### Test it
+
+Push to GitHub then visit:
+```
+https://your-vercel-app.vercel.app/api/accidents
