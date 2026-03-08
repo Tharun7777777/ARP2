@@ -1,632 +1,648 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MapSense</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>MapSense — Western Territories</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Rye&family=IM+Fell+English:ital@0;1&family=UnifrakturMaguntia&display=swap" rel="stylesheet"/>
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<style>
+:root{
+  --parchment:#f0e2c0;
+  --parchment-dark:#d9c49a;
+  --parchment-deep:#c4a96b;
+  --ink:#1c0f06;
+  --ink-mid:#3d2010;
+  --ink-light:#6b3a1f;
+  --rust:#7a2e0e;
+  --rust-light:#a0411a;
+  --gold:#b8892a;
+  --gold-light:#d4a843;
+  --aged:#8b6340;
+  --shadow:rgba(28,15,6,0.55);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'IM Fell English',Georgia,serif;background:#1c0f06;
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Ccircle cx='10' cy='10' r='3' fill='%23b8892a' stroke='%231c0f06' stroke-width='1.5'/%3E%3C/svg%3E") 10 10,crosshair;
+}
+#map{height:100vh;width:100%;filter:sepia(65%) contrast(1.08) brightness(0.92) saturate(1.1);}
+#map::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:400;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)' opacity='0.07'/%3E%3C/svg%3E");
+  opacity:0.4;mix-blend-mode:multiply;}
+#vignette{position:fixed;inset:0;pointer-events:none;z-index:401;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(28,10,2,0.65) 100%);}
+.corner{position:fixed;z-index:600;width:80px;height:80px;pointer-events:none;opacity:0.7;}
+.corner svg{width:100%;height:100%;}
+.corner-tl{top:0;left:0;}.corner-tr{top:0;right:0;transform:scaleX(-1);}
+.corner-bl{bottom:0;left:0;transform:scaleY(-1);}.corner-br{bottom:0;right:0;transform:scale(-1,-1);}
 
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+/* Sidebar */
+#sidebar{position:fixed;top:0;right:-420px;width:390px;height:100vh;
+  background:repeating-linear-gradient(0deg,transparent,transparent 28px,rgba(139,99,64,.07) 28px,rgba(139,99,64,.07) 29px),
+    linear-gradient(160deg,#f0e2c0 0%,#e8d4a8 40%,#ddc898 100%);
+  box-shadow:-8px 0 40px rgba(28,10,2,0.7);transition:right .45s cubic-bezier(.4,0,.2,1);
+  overflow-y:auto;z-index:9999;scrollbar-width:thin;scrollbar-color:var(--aged) var(--parchment-dark);
+  border-left:3px solid var(--gold);}
+#sidebar::-webkit-scrollbar{width:5px}
+#sidebar::-webkit-scrollbar-thumb{background:var(--aged);border-radius:3px}
+#sidebar.open{right:0}
+#sidebar::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;
+  background:repeating-linear-gradient(180deg,var(--parchment-deep) 0px,var(--parchment) 4px,var(--parchment-dark) 8px,var(--parchment-deep) 12px);
+  opacity:0.5;}
+.sidebar-header{display:flex;justify-content:space-between;align-items:center;padding:20px 18px 16px;
+  background:var(--ink);border-bottom:3px double var(--gold);position:sticky;top:0;z-index:10;}
+.sidebar-header-title{text-align:center;flex:1}
+.sidebar-header h2{color:var(--gold-light);font-family:'Rye',serif;font-size:18px;letter-spacing:2px;
+  text-shadow:0 0 20px rgba(184,137,42,0.5),2px 2px 0 rgba(0,0,0,0.8);}
+.sidebar-header p{color:var(--parchment-dark);font-size:10px;font-family:'IM Fell English',serif;
+  font-style:italic;letter-spacing:1.5px;margin-top:2px;}
+.close-btn{background:transparent;border:1.5px solid var(--gold);color:var(--gold-light);
+  width:32px;height:32px;border-radius:2px;font-size:14px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;font-family:'Rye',serif;}
+.close-btn:hover{background:var(--gold);color:var(--ink)}
 
-        body { font-family: Arial, sans-serif; }
+#route-section{padding:14px 14px 6px}
+.section-label{color:var(--ink);font-family:'Rye',serif;font-size:12px;letter-spacing:2px;
+  text-transform:uppercase;margin-bottom:12px;text-align:center;
+  display:flex;align-items:center;gap:8px;}
+.section-label::before,.section-label::after{content:'';flex:1;height:1px;
+  background:linear-gradient(90deg,transparent,var(--aged),transparent);}
 
-        #map { height: 100vh; width: 100%; }
+/* Route cards */
+.route-card{background:linear-gradient(160deg,#f5ead0 0%,#eedcb5 60%,#e5d09e 100%);
+  border:2px solid var(--ink-light);border-radius:4px;padding:14px 14px 12px;
+  margin-bottom:12px;cursor:pointer;transition:all .25s ease;
+  animation:slideIn .35s ease forwards;opacity:0;transform:translateX(30px);
+  box-shadow:3px 4px 12px rgba(28,15,6,0.3),inset 0 1px 0 rgba(255,255,255,0.4);
+  position:relative;overflow:hidden;}
+.route-card::after{content:'';position:absolute;bottom:0;right:0;width:20px;height:20px;
+  background:linear-gradient(225deg,var(--parchment-deep) 50%,transparent 50%);opacity:0.6;}
+.route-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:repeating-linear-gradient(90deg,var(--rust) 0,var(--rust) 8px,var(--gold) 8px,var(--gold) 16px);}
+@keyframes slideIn{to{opacity:1;transform:translateX(0)}}
+.route-card:nth-child(2){animation-delay:.07s}.route-card:nth-child(3){animation-delay:.14s}
+.route-card:hover{border-color:var(--rust);transform:translateY(-2px);
+  box-shadow:4px 6px 18px rgba(28,15,6,0.4),inset 0 1px 0 rgba(255,255,255,0.5);}
+.route-card.active{border-color:var(--rust);
+  background:linear-gradient(160deg,#faefd8 0%,#f3e0b5 60%,#ebcf96 100%);
+  box-shadow:0 0 0 3px rgba(122,46,14,0.3),4px 6px 18px rgba(28,15,6,0.4);}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.route-name{color:var(--ink);font-family:'Rye',serif;font-size:14px;letter-spacing:1px;
+  text-shadow:1px 1px 0 rgba(255,255,255,0.3);}
+.route-sub{color:var(--ink-light);font-size:11px;margin-top:3px;font-style:italic}
+.badge{font-size:10px;font-weight:700;padding:4px 10px;border-radius:2px;
+  font-family:'Rye',serif;letter-spacing:.5px;border:1.5px solid;}
+.risk-low{background:rgba(74,140,50,.15);color:#2d6e1a;border-color:rgba(74,140,50,.5)}
+.risk-medium{background:rgba(180,130,20,.15);color:#7a5c0a;border-color:rgba(180,130,20,.5)}
+.risk-high{background:rgba(140,40,20,.15);color:#7a1a0a;border-color:rgba(140,40,20,.5)}
+.risk-bar-wrap{margin:8px 0;background:rgba(28,15,6,0.15);border-radius:2px;height:5px;
+  overflow:hidden;border:1px solid rgba(28,15,6,0.2);}
+.risk-bar-fill{height:100%;border-radius:1px;transition:width .6s ease .2s;width:0}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-bottom:10px}
+.metric{background:rgba(28,15,6,0.07);border-radius:2px;padding:5px 3px;text-align:center;
+  border:1px solid rgba(139,99,64,0.25);}
+.metric-icon{font-size:13px}
+.metric-val{font-size:11px;font-weight:700;color:var(--ink-mid);margin-top:2px;font-family:'IM Fell English',serif}
+.metric-lbl{font-size:9px;color:var(--aged);margin-top:1px;font-style:italic}
+.nav-btn{width:100%;padding:9px;border-radius:3px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;transition:all .2s;
+  position:relative;overflow:hidden;background:var(--ink);color:var(--gold-light);
+  border:2px solid var(--gold);font-family:'Rye',serif;font-size:12px;letter-spacing:1.5px;
+  text-shadow:0 0 10px rgba(212,168,67,0.4);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.1),0 3px 8px rgba(0,0,0,0.4);}
+.nav-btn:hover{background:var(--rust);border-color:var(--gold-light);color:#fff}
 
-        /* ── Sidebar ── */
-        #sidebar {
-            position: fixed;
-            top: 0; right: -360px;
-            width: 340px; height: 100vh;
-            background: #ffffff;
-            box-shadow: -4px 0 20px rgba(0,0,0,0.18);
-            padding: 16px;
-            transition: right 0.35s ease;
-            overflow-y: auto;
-            z-index: 9999;
-        }
-        #sidebar.open { right: 0; }
+/* Turn-by-turn */
+#turns-section{padding:0 14px 20px;display:none}
+.turns-header{display:flex;align-items:center;gap:8px;padding:12px 0 10px;
+  color:var(--ink);font-family:'Rye',serif;font-size:11px;letter-spacing:1.5px;}
+.turns-back{background:transparent;border:1.5px solid var(--aged);color:var(--ink-light);
+  padding:4px 10px;border-radius:2px;font-size:11px;cursor:pointer;margin-left:auto;
+  font-family:'IM Fell English',serif;font-style:italic;transition:all .2s;}
+.turns-back:hover{background:var(--ink);color:var(--parchment);border-color:var(--ink)}
+.step-list{display:flex;flex-direction:column;gap:0}
+.step-item{display:flex;align-items:flex-start;gap:10px;padding:11px 0;
+  border-bottom:1px dashed var(--parchment-deep);
+  animation:fadeUp .3s ease forwards;opacity:0;transform:translateY(10px);}
+@keyframes fadeUp{to{opacity:1;transform:translateY(0)}}
+.step-item:last-child{border-bottom:none}
+.step-connector{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.step-icon-wrap{width:36px;height:36px;border-radius:2px;display:flex;align-items:center;
+  justify-content:center;font-size:16px;flex-shrink:0;
+  background:var(--parchment);border:2px solid var(--aged);transition:all .3s;}
+.step-item.active-step .step-icon-wrap{background:var(--ink);border-color:var(--gold);
+  box-shadow:0 0 12px rgba(184,137,42,0.5);}
+.step-line{width:1px;flex-grow:1;min-height:14px;margin-top:4px;
+  background:repeating-linear-gradient(180deg,var(--aged) 0px,var(--aged) 4px,transparent 4px,transparent 8px);}
+.step-body{flex:1;padding-top:7px}
+.step-instruction{color:var(--ink-mid);font-size:12px;line-height:1.5;font-style:italic}
+.step-dist{display:inline-block;margin-top:4px;background:rgba(28,15,6,0.08);color:var(--aged);
+  font-size:10px;padding:2px 7px;border-radius:2px;border:1px solid rgba(139,99,64,0.25);}
+.turns-progress{background:rgba(28,15,6,0.06);border-radius:3px;padding:10px 12px;
+  margin-bottom:14px;display:flex;align-items:center;gap:10px;border:1px solid var(--parchment-deep);}
+.tp-bar{flex:1;height:4px;background:rgba(28,15,6,0.15);border-radius:2px;overflow:hidden}
+.tp-fill{height:100%;border-radius:2px;
+  background:repeating-linear-gradient(90deg,var(--rust) 0,var(--rust) 6px,var(--gold) 6px,var(--gold) 12px);
+  transition:width .4s ease;}
+.tp-label{color:var(--ink-light);font-size:10px;white-space:nowrap;font-style:italic}
 
-        .sidebar-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 14px;
-        }
-        .sidebar-header h2 { font-size: 18px; }
+/* Input box */
+#route-box{position:absolute;top:14px;left:14px;z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 28px,rgba(139,99,64,.06) 28px,rgba(139,99,64,.06) 29px),
+    linear-gradient(160deg,#f5ead0,#e8d4a8);
+  padding:0;border-radius:4px;
+  box-shadow:4px 5px 20px rgba(28,10,2,0.6),inset 0 1px 0 rgba(255,255,255,0.5);
+  border:2px solid var(--ink-light);overflow:hidden;min-width:220px;}
+.route-box-header{background:var(--ink);padding:10px 14px 8px;
+  border-bottom:2px solid var(--gold);text-align:center;}
+.route-box-header h3{font-family:'Rye',serif;color:var(--gold-light);font-size:13px;
+  letter-spacing:2px;text-shadow:0 0 12px rgba(184,137,42,0.4);}
+.route-box-header p{color:var(--parchment-dark);font-size:9px;font-style:italic;
+  letter-spacing:1.5px;margin-top:2px;}
+.route-box-body{padding:10px 12px 12px}
+#route-box input{display:block;width:100%;margin:5px 0;padding:7px 10px;
+  border:1px solid var(--aged);border-radius:2px;font-size:12px;
+  font-family:'IM Fell English',serif;font-style:italic;
+  background:rgba(255,255,255,0.5);color:var(--ink);outline:none;transition:border-color .2s;}
+#route-box input:focus{border-color:var(--rust);background:rgba(255,255,255,0.7)}
+#route-box input::placeholder{color:var(--aged);font-style:italic}
+#route-box button{margin-top:8px;width:100%;padding:9px;background:var(--ink);
+  color:var(--gold-light);border:2px solid var(--gold);border-radius:2px;cursor:pointer;
+  font-family:'Rye',serif;font-size:11px;letter-spacing:2px;transition:all .2s;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.1);}
+#route-box button:hover{background:var(--rust);border-color:var(--gold-light)}
 
-        .close-btn {
-            background: none; border: none;
-            font-size: 22px; cursor: pointer; color: #555;
-        }
-
-        /* ── Route box ── */
-        #route-box {
-            position: absolute;
-            top: 12px; left: 12px;
-            z-index: 9999;
-            background: white;
-            padding: 10px 12px;
-            border-radius: 10px;
-            box-shadow: 0 3px 10px rgba(0,0,0,0.25);
-        }
-        #route-box input {
-            display: block;
-            width: 190px;
-            margin: 4px 0;
-            padding: 6px 8px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 13px;
-        }
-        #route-box button {
-            margin-top: 6px;
-            width: 100%;
-            padding: 7px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-        }
-        #route-box button:hover { background: #1d4ed8; }
-
-        /* ── Status bar ── */
-        #data-timestamp {
-            position: fixed;
-            bottom: 50px; left: 10px;
-            z-index: 9999;
-            background: rgba(255,255,255,0.9);
-            padding: 4px 10px;
-            border-radius: 6px;
-            font-size: 11px;
-            color: #555;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.15);
-        }
-
-        #refresh-btn {
-            position: fixed;
-            bottom: 16px; left: 10px;
-            z-index: 9999;
-            background: white;
-            border: 1px solid #ddd;
-            padding: 7px 14px;
-            border-radius: 8px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.18);
-            cursor: pointer;
-            font-size: 13px;
-        }
-        #refresh-btn:hover { background: #f5f5f5; }
-
-        /* ── Route list in sidebar ── */
-        .route-card {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            cursor: pointer;
-            border: 2px solid transparent;
-            transition: border-color 0.2s;
-        }
-        .route-card:hover { border-color: #2563eb; }
-        .route-card.active { border-color: #2563eb; background: #eff6ff; }
-
-        .route-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-        }
-        .route-title { font-weight: 700; font-size: 14px; }
-        .route-meta { font-size: 12px; color: #666; margin-top: 2px; }
-        .risk-badge {
-            font-size: 12px;
-            font-weight: 600;
-            padding: 2px 8px;
-            border-radius: 12px;
-        }
-        .risk-low    { background: #d1fae5; color: #065f46; }
-        .risk-medium { background: #fef3c7; color: #92400e; }
-        .risk-high   { background: #fee2e2; color: #991b1b; }
-
-        .turns-btn {
-            margin-top: 8px;
-            padding: 4px 10px;
-            font-size: 12px;
-            background: #e5e7eb;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .turns-btn:hover { background: #d1d5db; }
-
-        #turn-list {
-            list-style: none;
-            padding: 0;
-            margin-top: 10px;
-        }
-        #turn-list li {
-            padding: 7px 0;
-            border-bottom: 1px solid #f0f0f0;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        #turn-list li span.icon { font-size: 18px; flex-shrink: 0; }
-
-        .route-tooltip {
-            background: rgba(255,255,255,0.92);
-            color: #111;
-            font-weight: bold;
-            font-size: 13px;
-            padding: 4px 8px;
-            border-radius: 6px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-            border: 1px solid #ddd;
-            pointer-events: none;
-        }
-
-        #advice-box { margin-top: 10px; font-size: 13px; }
-        #advice-box.low    { color: #065f46; }
-        #advice-box.medium { color: #92400e; }
-        #advice-box.high   { color: #991b1b; }
-
-        hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
-    </style>
+#data-timestamp{position:fixed;bottom:54px;left:12px;z-index:9999;
+  background:linear-gradient(135deg,#f0e2c0,#ddc898);padding:5px 12px;border-radius:3px;
+  font-size:10px;color:var(--ink-light);font-style:italic;
+  box-shadow:2px 3px 8px rgba(28,10,2,0.4);border:1px solid var(--aged);}
+#refresh-btn{position:fixed;bottom:14px;left:12px;z-index:9999;
+  background:var(--ink);border:1.5px solid var(--gold);padding:7px 14px;border-radius:3px;
+  cursor:pointer;font-size:11px;color:var(--gold-light);font-family:'Rye',serif;
+  letter-spacing:1px;transition:all .2s;}
+#refresh-btn:hover{background:var(--rust)}
+#ml-status{position:fixed;bottom:96px;left:12px;z-index:9999;
+  background:linear-gradient(135deg,#f0e2c0,#ddc898);padding:6px 12px;border-radius:3px;
+  font-size:10px;color:var(--ink-mid);font-style:italic;
+  box-shadow:2px 3px 8px rgba(28,10,2,0.4);border:1px solid var(--aged);
+  border-left:3px solid var(--rust);max-width:250px;font-family:'IM Fell English',serif;}
+#ml-status.ready{border-left-color:#4a8c32}
+.score-pill{font-size:10px;font-weight:700;padding:3px 8px;border-radius:2px;font-style:italic}
+.score-formula{background:rgba(74,140,50,.12);color:#3a6e1a;border:1px solid rgba(74,140,50,.3)}
+.score-ml{background:rgba(122,46,14,.12);color:var(--rust);border:1px solid rgba(122,46,14,.3)}
+.score-ml.loading{background:rgba(139,99,64,.1);color:var(--aged)}
+.ml-insight{margin-top:8px;padding:7px 10px;background:rgba(122,46,14,.06);border-radius:2px;
+  border-left:2px solid var(--rust);font-size:11px;color:var(--rust);font-style:italic;display:none;}
+.ml-insight.visible{display:block}
+.route-tooltip{background:var(--ink);color:var(--gold-light);font-family:'Rye',serif;
+  font-size:11px;padding:4px 9px;border-radius:2px;border:1px solid var(--gold);
+  pointer-events:none;letter-spacing:.5px;}
+.leaflet-popup-content-wrapper{background:linear-gradient(160deg,#f5ead0,#e8d4a8) !important;
+  border:2px solid var(--ink-light) !important;border-radius:4px !important;
+  box-shadow:4px 5px 20px rgba(28,10,2,0.5) !important;}
+.leaflet-popup-tip{background:#e8d4a8 !important}
+#compass{position:fixed;bottom:14px;right:14px;z-index:600;opacity:0.55;pointer-events:none;
+  animation:compassSpin 0.5s ease 1s both;}
+@keyframes compassSpin{from{transform:rotate(-15deg);opacity:0}to{transform:rotate(0);opacity:0.55}}
+.leaflet-control-layers{background:linear-gradient(160deg,#f5ead0,#e8d4a8) !important;
+  border:2px solid var(--ink-light) !important;border-radius:4px !important;
+  font-family:'IM Fell English',serif !important;font-style:italic !important;
+  color:var(--ink-mid) !important;box-shadow:3px 4px 12px rgba(28,10,2,0.35) !important;}
+.leaflet-control-layers-toggle{background-color:var(--ink) !important;
+  border:2px solid var(--gold) !important;border-radius:3px !important;}
+.leaflet-control-zoom a{background:linear-gradient(160deg,#f5ead0,#e8d4a8) !important;
+  color:var(--ink) !important;border:1px solid var(--aged) !important;font-family:'Rye',serif !important;}
+.leaflet-control-zoom a:hover{background:var(--ink) !important;color:var(--gold-light) !important}
+.leaflet-control-attribution{background:rgba(240,226,192,0.8) !important;
+  font-family:'IM Fell English',serif !important;font-style:italic !important;
+  font-size:10px !important;color:var(--aged) !important;}
+</style>
 </head>
 <body>
-
 <div id="map"></div>
+<div id="vignette"></div>
+
+<div class="corner corner-tl"><svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L40 2 L40 6 L6 6 L6 40 L2 40 Z" fill="#b8892a" opacity="0.8"/><path d="M2 2 L20 2" stroke="#b8892a" stroke-width="2.5"/><path d="M2 2 L2 20" stroke="#b8892a" stroke-width="2.5"/><circle cx="2" cy="2" r="3" fill="#b8892a"/><path d="M10 10 L30 10 L30 12 L12 12 L12 30 L10 30 Z" fill="#7a2e0e" opacity="0.5"/></svg></div>
+<div class="corner corner-tr"><svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L40 2 L40 6 L6 6 L6 40 L2 40 Z" fill="#b8892a" opacity="0.8"/><path d="M2 2 L20 2" stroke="#b8892a" stroke-width="2.5"/><path d="M2 2 L2 20" stroke="#b8892a" stroke-width="2.5"/><circle cx="2" cy="2" r="3" fill="#b8892a"/><path d="M10 10 L30 10 L30 12 L12 12 L12 30 L10 30 Z" fill="#7a2e0e" opacity="0.5"/></svg></div>
+<div class="corner corner-bl"><svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L40 2 L40 6 L6 6 L6 40 L2 40 Z" fill="#b8892a" opacity="0.8"/><path d="M2 2 L20 2" stroke="#b8892a" stroke-width="2.5"/><path d="M2 2 L2 20" stroke="#b8892a" stroke-width="2.5"/><circle cx="2" cy="2" r="3" fill="#b8892a"/><path d="M10 10 L30 10 L30 12 L12 12 L12 30 L10 30 Z" fill="#7a2e0e" opacity="0.5"/></svg></div>
+<div class="corner corner-br"><svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 2 L40 2 L40 6 L6 6 L6 40 L2 40 Z" fill="#b8892a" opacity="0.8"/><path d="M2 2 L20 2" stroke="#b8892a" stroke-width="2.5"/><path d="M2 2 L2 20" stroke="#b8892a" stroke-width="2.5"/><circle cx="2" cy="2" r="3" fill="#b8892a"/><path d="M10 10 L30 10 L30 12 L12 12 L12 30 L10 30 Z" fill="#7a2e0e" opacity="0.5"/></svg></div>
+
+<div id="compass">
+  <svg width="90" height="90" viewBox="0 0 90 90" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="45" cy="45" r="42" fill="none" stroke="#b8892a" stroke-width="1.5" opacity="0.6"/>
+    <circle cx="45" cy="45" r="36" fill="none" stroke="#7a2e0e" stroke-width="0.8" opacity="0.4"/>
+    <polygon points="45,5 49,40 45,44 41,40" fill="#b8892a"/>
+    <polygon points="45,85 49,50 45,46 41,50" fill="#c8a878"/>
+    <polygon points="5,45 40,41 44,45 40,49" fill="#c8a878"/>
+    <polygon points="85,45 50,41 46,45 50,49" fill="#c8a878"/>
+    <circle cx="45" cy="45" r="4" fill="#b8892a"/>
+    <circle cx="45" cy="45" r="2" fill="#1c0f06"/>
+    <text x="45" y="16" text-anchor="middle" fill="#b8892a" font-family="Rye,serif" font-size="10" font-weight="bold">N</text>
+    <text x="45" y="80" text-anchor="middle" fill="#c8a878" font-family="Rye,serif" font-size="8">S</text>
+    <text x="12" y="48" text-anchor="middle" fill="#c8a878" font-family="Rye,serif" font-size="8">W</text>
+    <text x="78" y="48" text-anchor="middle" fill="#c8a878" font-family="Rye,serif" font-size="8">E</text>
+  </svg>
+</div>
 
 <div id="sidebar">
-    <div class="sidebar-header">
-        <h2>🗺 MapSense</h2>
-        <button class="close-btn" id="closeSidebar">✕</button>
+  <div class="sidebar-header">
+    <button class="close-btn" id="closeSidebar">✕</button>
+    <div class="sidebar-header-title">
+      <h2>☽ MapSense ☾</h2>
+      <p>— Frontier Territory Scout —</p>
     </div>
-    <div id="risk-score"></div>
-    <div id="risk-details"></div>
-    <div id="advice-box"></div>
-    <ol id="turn-list"></ol>
+    <div style="width:32px"></div>
+  </div>
+  <div id="route-section">
+    <div style="height:14px"></div>
+    <div class="section-label">Trail Options</div>
+    <div id="route-cards"></div>
+  </div>
+  <div id="turns-section">
+    <div class="turns-header">
+      <span>🧭 Waypoints</span>
+      <button class="turns-back" id="turnsBack">← Back to Trails</button>
+    </div>
+    <div class="turns-progress">
+      <span class="tp-label" id="tp-label">0 / 0 waypoints</span>
+      <div class="tp-bar"><div class="tp-fill" id="tp-fill" style="width:0%"></div></div>
+      <span class="tp-label" id="tp-dist">0 km</span>
+    </div>
+    <div class="step-list" id="step-list"></div>
+  </div>
 </div>
 
 <div id="route-box">
-    <input id="start" placeholder="Start location" />
-    <input id="end" placeholder="End location" />
-    <button onclick="getRouteMultiple()">🔍 Find Route</button>
+  <div class="route-box-header">
+    <h3>⚑ Scout a Trail</h3>
+    <p>— Enter your territories —</p>
+  </div>
+  <div class="route-box-body">
+    <input id="start" placeholder="🐎  Departing from…"/>
+    <input id="end"   placeholder="🏁  Riding to…"/>
+    <button onclick="getRouteMultiple()">⚔ Ride Out</button>
+  </div>
 </div>
 
-<div id="data-timestamp">⏳ Loading live data…</div>
-<button id="refresh-btn" onclick="loadAllData()">🔄 Refresh Data</button>
+<div id="data-timestamp">⌛ Loading territory data…</div>
+<button id="refresh-btn" onclick="loadAllData()">↺ Refresh</button>
+<div id="ml-status">🤠 Scouting intelligence…</div>
 
 <script>
-// ─────────────────────────────────────────────────
-// GLOBALS
-// ─────────────────────────────────────────────────
-let acc = [], poll = [], traffic = [], hosp = [];
-let combinedPoints = [];
-let routeLayers = [], routesInfo = [];
+let acc=[],poll=[],traffic=[],hosp=[],combinedPoints=[];
+let routeLayers=[],routesInfo=[];
+let accidentLayer,pollutionLayer,trafficLayer,hospitalLayer,combinedLayer,hoverGroup,layerControl;
 
-let accidentLayer, pollutionLayer, trafficLayer, hospitalLayer, combinedLayer;
-let hoverGroup;
-let layerControl;
+const heatCfg={radius:60,blur:35,maxZoom:17,minOpacity:.4,
+  gradient:{0.2:"#4a8c32",0.4:"#8bc34a",0.6:"#d4a843",0.8:"#c0521a",1.0:"#8b1a0a"}};
 
-const heatCfg = {
-    radius: 60, blur: 35, maxZoom: 17, minOpacity: 0.4,
-    gradient: { 0.2:"blue", 0.4:"cyan", 0.6:"lime", 0.8:"yellow", 1.0:"red" }
-};
+const map=L.map("map",{maxZoom:19});
+map.createPane('routePane'); map.getPane('routePane').style.zIndex='620';
+map.createPane('routeOutlinePane'); map.getPane('routeOutlinePane').style.zIndex='619';
 
-// ─────────────────────────────────────────────────
-// MAP INIT
-// ─────────────────────────────────────────────────
-const map = L.map("map");
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
-map.setView([10.8505, 76.2711], 7);
+L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",{
+  attribution:'&copy; <a href="https://www.esri.com">Esri</a>',maxNativeZoom:13,maxZoom:19
+}).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+  attribution:'&copy; <a href="https://www.openstreetmap.org">OpenStreetMap</a>',
+  maxZoom:19,maxNativeZoom:19,opacity:0.55,subdomains:'abc'
+}).addTo(map);
 
-document.getElementById("closeSidebar").onclick = () =>
-    document.getElementById("sidebar").classList.remove("open");
+map.setView([10.8505,76.2711],7);
+document.getElementById("closeSidebar").onclick=()=>document.getElementById("sidebar").classList.remove("open");
+document.getElementById("turnsBack").onclick=()=>showRouteSection();
 
-// ─────────────────────────────────────────────────
-// LIVE DATA LOADING
-// ─────────────────────────────────────────────────
-async function loadAllData() {
-    const ts = document.getElementById("data-timestamp");
-    ts.textContent = "⏳ Fetching live data…";
-
-    try {
-        const [accData, pollData, trafficData, hospData] = await Promise.all([
-            fetch("/api/accidents").then(r => { if (!r.ok) throw new Error("accidents"); return r.json(); }),
-            fetch("/api/pollution").then(r => { if (!r.ok) throw new Error("pollution"); return r.json(); }),
-            fetch("/api/traffic").then(r  => { if (!r.ok) throw new Error("traffic");   return r.json(); }),
-            fetch("hospital.json").then(r => { if (!r.ok) throw new Error("hospital");  return r.json(); })
-        ]);
-
-        acc     = accData;
-        poll    = pollData;
-        traffic = trafficData;
-        hosp    = hospData;
-
-        ts.textContent = "✅ Live data — " + new Date().toLocaleTimeString();
-        buildLayers();
-    } catch (err) {
-        console.error("Data load error:", err);
-        ts.textContent = "❌ Error loading: " + err.message + " — retrying in 60s";
-        setTimeout(loadAllData, 60000);
-    }
+// ML
+var mlModel=null,mlReady=false;
+function generateTrainingData(n){
+  var xs=[],ys=[];
+  for(var i=0;i<n;i++){
+    var sc=Math.floor(Math.random()*6),a,t,p,h,risk;
+    if(sc===0){a=0.6+Math.random()*0.4;t=0.65+Math.random()*0.35;p=0.55+Math.random()*0.35;h=0.5+Math.random()*0.4;risk=0.78+Math.random()*0.20;}
+    else if(sc===1){a=0.4+Math.random()*0.4;t=0.3+Math.random()*0.4;p=0.2+Math.random()*0.3;h=0.2+Math.random()*0.3;risk=0.38+Math.random()*0.28;}
+    else if(sc===2){a=Math.random()*0.25;t=Math.random()*0.2;p=Math.random()*0.2;h=Math.random()*0.2;risk=0.05+Math.random()*0.2;}
+    else if(sc===3){a=0.75+Math.random()*0.25;t=0.2+Math.random()*0.4;p=0.2+Math.random()*0.3;h=0.3+Math.random()*0.3;risk=Math.min(1,0.65+a*0.3+Math.random()*0.05);}
+    else if(sc===4){a=0.1+Math.random()*0.3;t=0.3+Math.random()*0.3;p=0.7+Math.random()*0.3;h=0.5+Math.random()*0.3;risk=0.45+Math.random()*0.25;}
+    else{a=Math.random();t=Math.random();p=Math.random();h=Math.random();var base=a*0.35+t*0.30+p*0.20+h*0.15;var inter=(a>0.7&&t>0.6)?0.15:0;risk=Math.min(1,base+inter+(Math.random()-0.5)*0.08);}
+    xs.push([Math.max(0,Math.min(1,a)),Math.max(0,Math.min(1,t)),Math.max(0,Math.min(1,p)),Math.max(0,Math.min(1,h))]);
+    ys.push([Math.max(0,Math.min(1,risk))]);
+  }
+  return{xs,ys};
+}
+async function buildAndTrainModel(){
+  var st=document.getElementById("ml-status");
+  st.textContent="🤠 Training frontier scout… (0%)";
+  await new Promise(r=>setTimeout(r,50));
+  var data=generateTrainingData(800);
+  var xT=tf.tensor2d(data.xs),yT=tf.tensor2d(data.ys);
+  var model=tf.sequential();
+  model.add(tf.layers.dense({inputShape:[4],units:16,activation:"relu",kernelInitializer:"heNormal"}));
+  model.add(tf.layers.dense({units:16,activation:"relu"}));
+  model.add(tf.layers.dense({units:8,activation:"relu"}));
+  model.add(tf.layers.dense({units:1,activation:"sigmoid"}));
+  model.compile({optimizer:tf.train.adam(0.01),loss:"meanSquaredError"});
+  await model.fit(xT,yT,{epochs:80,batchSize:32,validationSplit:0.1,shuffle:true,
+    callbacks:{onEpochEnd:(epoch,logs)=>{
+      if(epoch%10===0)st.textContent="🤠 Training scout… ("+Math.round(epoch/80*100)+"%) loss="+logs.loss.toFixed(4);
+    }}});
+  xT.dispose();yT.dispose();
+  mlModel=model;mlReady=true;
+  st.textContent="🤠 Scout ready — trail intelligence active ✓";
+  st.className="ready";
+  refreshMLScores();
+}
+async function mlPredict(a,t,p,h){
+  if(!mlReady||!mlModel)return null;
+  var input=tf.tensor2d([[a,t,p,h]]);
+  var output=mlModel.predict(input);
+  var score=(await output.data())[0];
+  input.dispose();output.dispose();
+  return parseFloat(score.toFixed(3));
+}
+function refreshMLScores(){
+  if(!routesInfo.length)return;
+  routesInfo.forEach(async info=>{
+    var r=info.risk;
+    info.mlScore=await mlPredict(r.accAvg,r.trafficAvg,r.pollAvg,r.hospAvg);
+    updateMLCard(info);
+  });
+}
+function updateMLCard(info){
+  var pill=document.getElementById("ml-pill-"+info.index);
+  var insight=document.getElementById("ml-insight-"+info.index);
+  if(!pill||info.mlScore===null)return;
+  var ml=info.mlScore,formula=info.risk.combined,diff=ml-formula;
+  pill.textContent="🤖 Scout: "+ml.toFixed(2);
+  pill.className="score-pill score-ml";
+  var msg=Math.abs(diff)<0.04?"Scout concurs with formula assessment.":
+    diff>0.04?"⚠ Scout warns of greater peril — hidden danger detected"+(info.risk.accAvg>0.6&&info.risk.trafficAvg>0.5?" (wrecks & congestion ahead).":".")
+    :"✓ Scout reports safer passage than formula suggests.";
+  insight.innerHTML=msg;
+  insight.classList.add("visible");
 }
 
-// ─────────────────────────────────────────────────
-// BUILD / REFRESH HEATMAP LAYERS
-// ─────────────────────────────────────────────────
-function buildLayers() {
-    // Remove old layers
-    [accidentLayer, pollutionLayer, trafficLayer, hospitalLayer, combinedLayer, hoverGroup]
-        .forEach(l => { if (l && map.hasLayer(l)) map.removeLayer(l); });
-    if (layerControl) layerControl.remove();
+// Data
+async function loadAllData(){
+  const ts=document.getElementById("data-timestamp");
+  ts.textContent="⌛ Scouting territory…";
+  try{
+    const[a,p,t,h]=await Promise.all([
+      fetch("/api/accidents").then(r=>r.json()),
+      fetch("/api/pollution").then(r=>r.json()),
+      fetch("/api/traffic").then(r=>r.json()),
+      fetch("hospital.json").then(r=>r.json())
+    ]);
+    acc=a;poll=p;traffic=t;hosp=h;
+    ts.textContent="✦ Territory mapped — "+new Date().toLocaleTimeString();
+    buildLayers();
+  }catch(e){ts.textContent="✗ Scout lost — "+e.message;setTimeout(loadAllData,60000);}
+}
+function buildLayers(){
+  [accidentLayer,pollutionLayer,trafficLayer,hospitalLayer,combinedLayer,hoverGroup]
+    .forEach(l=>{if(l&&map.hasLayer(l))map.removeLayer(l)});
+  if(layerControl)layerControl.remove();
+  combinedPoints=[];
+  const n=Math.min(acc.length,poll.length,traffic.length,hosp.length);
+  for(let i=0;i<n;i++){
+    if(!acc[i]?.lat)continue;
+    const v=(acc[i].value||0)*.35+(traffic[i].value||0)*.30+(poll[i].value||0)*.20+(hosp[i].value||0)*.15;
+    combinedPoints.push([acc[i].lat,acc[i].lng,v]);
+  }
+  accidentLayer=L.heatLayer(acc.map(d=>[d.lat,d.lng,d.value]),heatCfg);
+  pollutionLayer=L.heatLayer(poll.map(d=>[d.lat,d.lng,d.value]),heatCfg);
+  trafficLayer=L.heatLayer(traffic.map(d=>[d.lat,d.lng,d.value]),heatCfg);
+  hospitalLayer=L.heatLayer(hosp.map(d=>[d.lat,d.lng,d.value]),heatCfg);
+  combinedLayer=L.heatLayer(combinedPoints,heatCfg);
+  hoverGroup=L.layerGroup().addTo(map);
+  [{data:acc,label:"💀 Peril"},{data:traffic,label:"🐎 Congestion"},
+   {data:poll,label:"🌫 Foulness"},{data:hosp,label:"🏥 Healer"}]
+    .forEach(({data,label})=>data.forEach(p=>
+      L.circleMarker([p.lat,p.lng],{radius:8,color:"transparent",fillOpacity:.01})
+       .bindTooltip(`${label}: ${p.value}`).addTo(hoverGroup)));
+  layerControl=L.control.layers(null,{
+    "💀 Accidents":accidentLayer,"🌫 Pollution":pollutionLayer,
+    "🐎 Traffic":trafficLayer,"🏥 Hospitals":hospitalLayer,
+    "🔥 Combined Peril":combinedLayer,"ℹ️ Scouts":hoverGroup
+  }).addTo(map);
+  combinedLayer.addTo(map);
+}
 
-    // Combined risk
-    combinedPoints = [];
-    const n = Math.min(acc.length, poll.length, traffic.length, hosp.length);
-    for (let i = 0; i < n; i++) {
-        if (!acc[i]?.lat) continue;
-        const v = (acc[i].value||0)*0.35 + (traffic[i].value||0)*0.30
-                + (poll[i].value||0)*0.20  + (hosp[i].value||0)*0.15;
-        combinedPoints.push([acc[i].lat, acc[i].lng, v]);
-    }
+// Utilities
+function haversine(a,b,c,d){const R=6371,r=Math.PI/180,dL=(c-a)*r,dl=(d-b)*r;
+  const x=Math.sin(dL/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function closest(ds,lat,lng){let b=null,m=Infinity;
+  ds.forEach(p=>{const d=haversine(lat,lng,p.lat,p.lng);if(d<m){m=d;b=p;}});return b;}
+function riskAtPoint(lat,lng){
+  const a=closest(acc,lat,lng)?.value||0,t=closest(traffic,lat,lng)?.value||0,
+        p=closest(poll,lat,lng)?.value||0,h=closest(hosp,lat,lng)?.value||0;
+  return a*.35+t*.30+p*.20+h*.15;}
+function segColor(r){return r<.2?"#4a9e38":r<.4?"#8bc34a":r<.6?"#d4a843":r<.8?"#c0521a":"#8b1a0a";}
+function riskLabel(s){return s<.4?"Safe Passage":s<.7?"Ride with Caution":"Outlaw Territory";}
+function riskClass(s){return s<.4?"risk-low":s<.7?"risk-medium":"risk-high";}
+function riskBarColor(s){return s<.4?"#4a9e38":s<.7?"#c8922a":"#8b1a0a";}
+function fmtDist(m){return m>=1000?(m/1000).toFixed(1)+" leagues":Math.round(m)+" paces";}
 
-    accidentLayer  = L.heatLayer(acc.map(d     => [d.lat, d.lng, d.value]), heatCfg);
-    pollutionLayer = L.heatLayer(poll.map(d    => [d.lat, d.lng, d.value]), heatCfg);
-    trafficLayer   = L.heatLayer(traffic.map(d => [d.lat, d.lng, d.value]), heatCfg);
-    hospitalLayer  = L.heatLayer(hosp.map(d    => [d.lat, d.lng, d.value]), heatCfg);
-    combinedLayer  = L.heatLayer(combinedPoints, heatCfg);
+async function geocode(q){
+  const d=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`).then(r=>r.json());
+  if(!d?.length)throw new Error("Territory unknown: "+q);
+  return{lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon)};}
 
-    // Invisible hover markers
-    hoverGroup = L.layerGroup().addTo(map);
-    const allSets = [
-        { data: acc,     label: "🚧 Accident Risk" },
-        { data: traffic, label: "🚦 Traffic" },
-        { data: poll,    label: "🏭 Pollution" },
-        { data: hosp,    label: "🏥 Hospital Load" }
-    ];
-    allSets.forEach(({ data, label }) => {
-        data.forEach(p => {
-            L.circleMarker([p.lat, p.lng], {
-                radius: 8, color: "transparent",
-                fillColor: "transparent", fillOpacity: 0.01
-            })
-            .bindTooltip(`${label}: ${p.value}`, { permanent: false })
-            .addTo(hoverGroup);
-        });
+function computeRouteRisk(coords){
+  const s=coords.filter((_,i)=>i%10===0);
+  let aS=0,tS=0,pS=0,hS=0;
+  s.forEach(c=>{const la=c[1],ln=c[0];
+    aS+=closest(acc,la,ln)?.value||0;tS+=closest(traffic,la,ln)?.value||0;
+    pS+=closest(poll,la,ln)?.value||0;hS+=closest(hosp,la,ln)?.value||0;});
+  const n=s.length||1,aA=aS/n,tA=tS/n,pA=pS/n,hA=hS/n;
+  return{accAvg:aA,trafficAvg:tA,pollAvg:pA,hospAvg:hA,combined:aA*.35+tA*.30+pA*.20+hA*.15};}
+
+async function getRouteMultiple(){
+  const s=document.getElementById("start").value,e=document.getElementById("end").value;
+  if(!s||!e)return alert("Name your departure and destination, stranger.");
+  let sC,eC;
+  try{[sC,eC]=await Promise.all([geocode(s),geocode(e)]);}catch(err){return alert(err.message);}
+  const url=`https://router.project-osrm.org/route/v1/driving/${sC.lng},${sC.lat};${eC.lng},${eC.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
+  const data=await fetch(url).then(r=>r.json());
+  if(!data?.routes?.length)return alert("No trails found through these territories.");
+  processRoutes(data.routes);}
+
+async function processRoutes(osrm){
+  routeLayers.forEach(o=>{map.removeLayer(o.line);if(o.outline)map.removeLayer(o.outline);});
+  routeLayers=[];routesInfo=[];
+  osrm.forEach((route,idx)=>{
+    const coords=route.geometry.coordinates,risk=computeRouteRisk(coords);
+    routesInfo.push({index:idx,coords,durationMin:Math.round(route.duration/60),
+      distanceKm:(route.distance/1000).toFixed(1),risk,steps:route.legs?.[0]?.steps||[],mlScore:null});
+  });
+  const best=routesInfo.reduce((m,r)=>r.risk.combined<m.risk.combined?r:m,routesInfo[0]);
+  routesInfo.forEach(info=>{
+    info.coords.forEach((c,i)=>{
+      if(i===info.coords.length-1)return;
+      const la=(info.coords[i][1]+info.coords[i+1][1])/2,ln=(info.coords[i][0]+info.coords[i+1][0])/2;
+      const riskVal=riskAtPoint(la,ln);
+      const outline=L.polyline([[info.coords[i][1],info.coords[i][0]],[info.coords[i+1][1],info.coords[i+1][0]]],
+        {color:"#1c0f06",weight:10,opacity:.7,pane:'routeOutlinePane'}).addTo(map);
+      const line=L.polyline([[info.coords[i][1],info.coords[i][0]],[info.coords[i+1][1],info.coords[i+1][0]]],
+        {color:segColor(riskVal),weight:5,opacity:1,pane:'routePane'}).addTo(map);
+      line.bindTooltip(`Trail ${info.index+1}`,{direction:"top",className:"route-tooltip"});
+      line.on("click",()=>openTurns(info));
+      routeLayers.push({line,outline,index:info.index});
     });
-
-    // Layer control
-    const overlays = {
-        "🚧 Accidents":   accidentLayer,
-        "🏭 Pollution":   pollutionLayer,
-        "🚦 Traffic":     trafficLayer,
-        "🏥 Hospital":    hospitalLayer,
-        "🔥 Combined Risk": combinedLayer,
-        "ℹ️ Info tooltips": hoverGroup
-    };
-    layerControl = L.control.layers(null, overlays).addTo(map);
-
-    // Default: show combined
-    combinedLayer.addTo(map);
+  });
+  map.fitBounds(routesInfo[0].coords.map(c=>[c[1],c[0]]));
+  renderRouteCards(routesInfo,best.index);
+  for(const info of routesInfo){
+    const r=info.risk;
+    info.mlScore=await mlPredict(r.accAvg,r.trafficAvg,r.pollAvg,r.hospAvg);
+    updateMLCard(info);
+  }
 }
 
-// ─────────────────────────────────────────────────
-// MAP CLICK — RISK POPUP
-// ─────────────────────────────────────────────────
-map.on("click", e => {
-    const { lat, lng } = e.latlng;
-    const a = closest(acc,     lat, lng)?.value || 0;
-    const t = closest(traffic, lat, lng)?.value || 0;
-    const p = closest(poll,    lat, lng)?.value || 0;
-    const h = closest(hosp,    lat, lng)?.value || 0;
-    const score = a*0.35 + t*0.30 + p*0.20 + h*0.15;
+function highlightRoute(idx){
+  routeLayers.forEach(o=>{
+    const active=o.index===idx;
+    o.line.setStyle({weight:active?7:4,opacity:active?1:.35});
+    if(o.outline)o.outline.setStyle({weight:active?11:7,opacity:active?.6:.2});
+  });}
 
-    const advice = score > 0.75
-        ? "<span style='color:red'>⚠ High Risk — avoid if possible</span>"
-        : score > 0.50
-        ? "<span style='color:orange'>⚠ Medium Risk — use caution</span>"
-        : "<span style='color:green'>✓ Low Risk — generally safe</span>";
+function renderRouteCards(routes,bestIdx){
+  const container=document.getElementById("route-cards");
+  container.innerHTML="";
+  routes.forEach((info,i)=>{
+    const r=info.risk,rl=riskLabel(r.combined),rc=riskClass(r.combined);
+    const pct=Math.round(r.combined*100);
+    const card=document.createElement("div");
+    card.className="route-card"+(info.index===bestIdx?" active":"");
+    card.dataset.idx=info.index;card.style.animationDelay=(i*.08)+"s";
+    card.innerHTML=`
+      <div class="card-top">
+        <div>
+          <div class="route-name">Trail ${info.index+1}${info.index===bestIdx?' <span style="color:var(--rust);font-size:11px">⭐ Safest</span>':''}</div>
+          <div class="route-sub">${info.durationMin} min ride &nbsp;·&nbsp; ${info.distanceKm} km</div>
+        </div>
+        <span class="badge ${rc}">${rl}</span>
+      </div>
+      <div class="risk-bar-wrap">
+        <div class="risk-bar-fill" data-pct="${pct}" style="background:${riskBarColor(r.combined)}"></div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-icon">💀</div><div class="metric-val">${r.accAvg.toFixed(2)}</div><div class="metric-lbl">Peril</div></div>
+        <div class="metric"><div class="metric-icon">🐎</div><div class="metric-val">${r.trafficAvg.toFixed(2)}</div><div class="metric-lbl">Congestion</div></div>
+        <div class="metric"><div class="metric-icon">🌫</div><div class="metric-val">${r.pollAvg.toFixed(2)}</div><div class="metric-lbl">Foulness</div></div>
+        <div class="metric"><div class="metric-icon">🏥</div><div class="metric-val">${r.hospAvg.toFixed(2)}</div><div class="metric-lbl">Healer</div></div>
+      </div>
+      <div style="display:flex;gap:7px;margin:8px 0 5px;flex-wrap:wrap;">
+        <span class="score-pill score-formula">📐 Formula: ${r.combined.toFixed(2)}</span>
+        <span class="score-pill score-ml loading" id="ml-pill-${info.index}">🤖 Scout: …</span>
+      </div>
+      <div class="ml-insight" id="ml-insight-${info.index}"></div>
+      <button class="nav-btn" onclick="event.stopPropagation();openTurns(routesInfo[${info.index}])">
+        🐎 &nbsp;Ride This Trail
+      </button>`;
+    card.onclick=()=>selectRoute(info.index);
+    container.appendChild(card);
+  });
+  showRouteSection();highlightRoute(bestIdx);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    document.querySelectorAll(".risk-bar-fill").forEach(el=>{el.style.width=el.dataset.pct+"%";});
+  }));}
 
-    L.popup()
-     .setLatLng([lat, lng])
-     .setContent(`
-        <b>📍 Risk Analysis</b><br><br>
-        🚧 Accident Risk: <b>${a.toFixed(2)}</b><br>
-        🚦 Traffic Level: <b>${t.toFixed(2)}</b><br>
-        🏭 Pollution:     <b>${p.toFixed(2)}</b><br>
-        🏥 Hospital Load: <b>${h.toFixed(2)}</b><br><br>
-        🔥 <b>Total Risk: ${score.toFixed(2)}</b><br>${advice}
-     `)
-     .openOn(map);
-});
+function selectRoute(idx){
+  highlightRoute(idx);
+  document.querySelectorAll(".route-card").forEach(el=>el.classList.toggle("active",Number(el.dataset.idx)===idx));}
+function showRouteSection(){
+  document.getElementById("route-section").style.display="block";
+  document.getElementById("turns-section").style.display="none";
+  document.getElementById("sidebar").classList.add("open");}
 
-// ─────────────────────────────────────────────────
-// USER LOCATION
-// ─────────────────────────────────────────────────
-map.locate({ maxZoom: 15, enableHighAccuracy: true });
-map.on("locationfound", e => {
-    L.marker(e.latlng).addTo(map).bindPopup("📍 Your Location").openPopup();
-    map.setView(e.latlng, 10);
-});
+const ICONS={"turn left":"⬅","turn sharp left":"↙","turn slight left":"↖",
+  "turn right":"➡","turn sharp right":"↘","turn slight right":"↗",
+  "straight":"⬆","continue":"⬆","roundabout":"⭕","rotary":"⭕",
+  "merge":"🔀","ramp":"🛣","depart":"🐎","arrive":"🏁","fork":"⑂","end of road":"🔚"};
+function stepIcon(step){
+  const m=step.maneuver||{},key=`${m.type||""} ${m.modifier||""}`.trim().toLowerCase();
+  for(const k of Object.keys(ICONS))if(key.includes(k))return ICONS[k];return "🌵";}
+function stepText(step){
+  const m=step.maneuver||{},ins=m.instruction||"";
+  if(ins.length>2)return ins+(step.distance?` — ${fmtDist(step.distance)}`:"");
+  let t=[m.type,m.modifier].filter(Boolean).join(" ");
+  if(step.name)t+=` onto ${step.name}`;
+  if(step.distance)t+=` — ${fmtDist(step.distance)}`;
+  return t||"Continue riding";}
 
-// ─────────────────────────────────────────────────
-// UTILITIES
-// ─────────────────────────────────────────────────
-function haversine(lat1, lon1, lat2, lon2) {
-    const R = 6371, r = Math.PI / 180;
-    const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
-    const a = Math.sin(dLat/2)**2
-            + Math.cos(lat1*r) * Math.cos(lat2*r) * Math.sin(dLon/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
-
-function closest(dataset, lat, lng) {
-    let best = null, min = Infinity;
-    dataset.forEach(p => {
-        const d = haversine(lat, lng, p.lat, p.lng);
-        if (d < min) { min = d; best = p; }
-    });
-    return best;
-}
-
-function riskAtPoint(lat, lng) {
-    const a = closest(acc,     lat, lng)?.value || 0;
-    const t = closest(traffic, lat, lng)?.value || 0;
-    const p = closest(poll,    lat, lng)?.value || 0;
-    const h = closest(hosp,    lat, lng)?.value || 0;
-    return a*0.35 + t*0.30 + p*0.20 + h*0.15;
-}
-
-function segmentColor(risk) {
-    if (risk < 0.2) return "#22c55e";
-    if (risk < 0.4) return "#a3e635";
-    if (risk < 0.6) return "#facc15";
-    if (risk < 0.8) return "#f97316";
-    return "#ef4444";
-}
-
-function riskLabel(score) {
-    return score < 0.4 ? "Low" : score < 0.7 ? "Medium" : "High";
-}
-function riskClass(score) {
-    return score < 0.4 ? "risk-low" : score < 0.7 ? "risk-medium" : "risk-high";
-}
-
-// ─────────────────────────────────────────────────
-// GEOCODING
-// ─────────────────────────────────────────────────
-async function geocode(place) {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
-    const data = await fetch(url).then(r => r.json());
-    if (!data?.length) throw new Error("Location not found: " + place);
-    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-}
-
-// ─────────────────────────────────────────────────
-// RISK FOR A FULL ROUTE
-// ─────────────────────────────────────────────────
-function computeRouteRisk(coords) {
-    // Sample every 10th coord
-    const sampled = coords.filter((_, i) => i % 10 === 0);
-    let aSum=0, tSum=0, pSum=0, hSum=0;
-    sampled.forEach(c => {
-        const lat = c[1], lng = c[0];
-        aSum += closest(acc,     lat, lng)?.value || 0;
-        tSum += closest(traffic, lat, lng)?.value || 0;
-        pSum += closest(poll,    lat, lng)?.value || 0;
-        hSum += closest(hosp,    lat, lng)?.value || 0;
-    });
-    const n = sampled.length || 1;
-    const aAvg=aSum/n, tAvg=tSum/n, pAvg=pSum/n, hAvg=hSum/n;
-    return {
-        accAvg: aAvg, trafficAvg: tAvg, pollAvg: pAvg, hospAvg: hAvg,
-        combined: aAvg*0.35 + tAvg*0.30 + pAvg*0.20 + hAvg*0.15
-    };
-}
-
-// ─────────────────────────────────────────────────
-// GET ROUTES (OSRM)
-// ─────────────────────────────────────────────────
-async function getRouteMultiple() {
-    const s = document.getElementById("start").value;
-    const e = document.getElementById("end").value;
-    if (!s || !e) return alert("Enter start & end location");
-
-    let sCoord, eCoord;
-    try {
-        [sCoord, eCoord] = await Promise.all([geocode(s), geocode(e)]);
-    } catch (err) {
-        return alert(err.message);
-    }
-
-    const url = `https://router.project-osrm.org/route/v1/driving/${sCoord.lng},${sCoord.lat};${eCoord.lng},${eCoord.lat}?overview=full&geometries=geojson&alternatives=true&steps=true`;
-    const data = await fetch(url).then(r => r.json());
-    if (!data?.routes?.length) return alert("No routes found");
-
-    processRoutes(data.routes);
-}
-
-// ─────────────────────────────────────────────────
-// PROCESS & RENDER ROUTES
-// ─────────────────────────────────────────────────
-function processRoutes(osrmRoutes) {
-    // Clear old route lines
-    routeLayers.forEach(obj => map.removeLayer(obj.line));
-    routeLayers = [];
-    routesInfo  = [];
-
-    osrmRoutes.forEach((route, idx) => {
-        const coords = route.geometry.coordinates;  // [lng, lat]
-        const risk   = computeRouteRisk(coords);
-        const steps  = (route.legs?.[0]?.steps || []);
-
-        routesInfo.push({
-            index: idx,
-            coords,
-            durationMin: Math.round(route.duration / 60),
-            distanceKm:  (route.distance / 1000).toFixed(1),
-            risk,
-            steps
-        });
-    });
-
-    // Best = lowest combined risk
-    const best = routesInfo.reduce((m, r) => r.risk.combined < m.risk.combined ? r : m, routesInfo[0]);
-
-    // Draw heatmap-coloured lines
-    routesInfo.forEach(info => {
-        info.coords.forEach((c, i) => {
-            if (i === info.coords.length - 1) return;
-            const lat = (info.coords[i][1] + info.coords[i+1][1]) / 2;
-            const lng = (info.coords[i][0] + info.coords[i+1][0]) / 2;
-            const color = segmentColor(riskAtPoint(lat, lng));
-            const line = L.polyline(
-                [[info.coords[i][1], info.coords[i][0]], [info.coords[i+1][1], info.coords[i+1][0]]],
-                { color, weight: 5, opacity: 0.85 }
-            ).addTo(map);
-            line.bindTooltip(`Route ${info.index + 1}`, { direction:"top", className:"route-tooltip" });
-            line.on("click", () => showTurns(info));
-            routeLayers.push({ line, index: info.index });
-        });
-    });
-
-    map.fitBounds(routesInfo[0].coords.map(c => [c[1], c[0]]));
-    renderSidebar(routesInfo, best.index);
-}
-
-// ─────────────────────────────────────────────────
-// HIGHLIGHT ROUTE
-// ─────────────────────────────────────────────────
-function highlightRoute(idx) {
-    routeLayers.forEach(obj => {
-        obj.line.setStyle({
-            weight:  obj.index === idx ? 7 : 4,
-            opacity: obj.index === idx ? 1 : 0.4
-        });
-    });
-}
-
-// ─────────────────────────────────────────────────
-// SIDEBAR RENDER
-// ─────────────────────────────────────────────────
-function renderSidebar(routesInfo, bestIdx) {
-    let html = `<h3 style="margin-bottom:10px;">🛣 Route Options</h3>`;
-
-    routesInfo.forEach(info => {
-        const r     = info.risk;
-        const rl    = riskLabel(r.combined);
-        const rc    = riskClass(r.combined);
-        const star  = info.index === bestIdx ? " ⭐ <b>Recommended</b>" : "";
-        html += `
-        <div class="route-card" data-idx="${info.index}" onclick="selectRoute(${info.index})">
-            <div class="route-card-header">
-                <div>
-                    <div class="route-title">Route ${info.index + 1}${star}</div>
-                    <div class="route-meta">${info.durationMin} min · ${info.distanceKm} km</div>
-                </div>
-                <div>
-                    <span class="risk-badge ${rc}">${r.combined.toFixed(2)} ${rl}</span>
-                </div>
-            </div>
-            <div style="font-size:11px;color:#666;margin-top:6px;">
-                🚧 ${r.accAvg.toFixed(2)} &nbsp; 🚦 ${r.trafficAvg.toFixed(2)} &nbsp;
-                🏭 ${r.pollAvg.toFixed(2)} &nbsp; 🏥 ${r.hospAvg.toFixed(2)}
-            </div>
-            <button class="turns-btn" onclick="event.stopPropagation(); showTurns(routesInfo[${info.index}])">
-                📋 Turn-by-turn
-            </button>
+function openTurns(info){
+  const steps=info.steps||[];
+  const list=document.getElementById("step-list");list.innerHTML="";
+  const totalDist=steps.reduce((s,st)=>s+(st.distance||0),0);
+  document.getElementById("tp-label").textContent=`0 / ${steps.length} waypoints`;
+  document.getElementById("tp-dist").textContent=fmtDist(totalDist);
+  document.getElementById("tp-fill").style.width="0%";
+  if(!steps.length){
+    list.innerHTML=`<div style="color:var(--aged);text-align:center;padding:20px;font-style:italic">No waypoint data for this trail.</div>`;
+  }else{
+    steps.forEach((step,i)=>{
+      const item=document.createElement("div");
+      item.className="step-item"+(i===0?" active-step":"");
+      item.style.animationDelay=(i*.04)+"s";
+      item.innerHTML=`
+        <div class="step-connector">
+          <div class="step-icon-wrap">${stepIcon(step)}</div>
+          ${i<steps.length-1?'<div class="step-line"></div>':''}
+        </div>
+        <div class="step-body">
+          <div class="step-instruction">${stepText(step)}</div>
+          ${step.distance?`<span class="step-dist">${fmtDist(step.distance)}</span>`:''}
         </div>`;
-    });
+      item.onclick=()=>{
+        document.querySelectorAll(".step-item").forEach(s=>s.classList.remove("active-step"));
+        item.classList.add("active-step");
+        const pct=Math.round(((i+1)/steps.length)*100);
+        document.getElementById("tp-fill").style.width=pct+"%";
+        document.getElementById("tp-label").textContent=`${i+1} / ${steps.length} waypoints`;};
+      list.appendChild(item);
+    });}
+  document.getElementById("route-section").style.display="none";
+  document.getElementById("turns-section").style.display="block";
+  document.getElementById("sidebar").classList.add("open");}
 
-    document.getElementById("risk-details").innerHTML = html;
-    document.getElementById("risk-score").innerHTML   = "";
-    document.getElementById("advice-box").innerHTML   = "";
-    document.getElementById("turn-list").innerHTML    = "";
-    document.getElementById("sidebar").classList.add("open");
+map.on("click",e=>{
+  const{lat,lng}=e.latlng;
+  const a=closest(acc,lat,lng)?.value||0,t=closest(traffic,lat,lng)?.value||0,
+        p=closest(poll,lat,lng)?.value||0,h=closest(hosp,lat,lng)?.value||0;
+  const s=a*.35+t*.30+p*.20+h*.15;
+  const clr=s>.75?"#8b1a0a":s>.50?"#c0521a":"#3a7a28";
+  const msg=s>.75?"☠ Outlaw Territory — avoid if ye value yer hide":s>.50?"⚠ Ride with Caution, stranger":"✦ Safe Passage — clear skies ahead";
+  L.popup().setLatLng([lat,lng]).setContent(`
+    <div style="font-family:'IM Fell English',Georgia,serif;min-width:185px">
+      <div style="font-family:'Rye',serif;font-size:14px;color:var(--ink);text-align:center;margin-bottom:8px;letter-spacing:1px">📍 Territory Report</div>
+      <div style="background:rgba(28,15,6,.06);border-radius:3px;padding:8px;margin-bottom:8px;border:1px solid rgba(139,99,64,.3)">
+        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px"><span>💀 Peril</span><b>${a.toFixed(2)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px"><span>🐎 Congestion</span><b>${t.toFixed(2)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px"><span>🌫 Foulness</span><b>${p.toFixed(2)}</b></div>
+        <div style="display:flex;justify-content:space-between;margin:3px 0;font-size:12px"><span>🏥 Healer dist.</span><b>${h.toFixed(2)}</b></div>
+      </div>
+      <div style="background:${clr}22;border:1px solid ${clr}66;border-radius:3px;
+        padding:7px 10px;color:${clr};font-weight:600;font-size:12px;font-style:italic;text-align:center">
+        ${s.toFixed(2)} — ${msg}
+      </div>
+    </div>`).openOn(map);});
 
-    // Highlight recommended by default
-    highlightRoute(bestIdx);
-}
+map.locate({maxZoom:15,enableHighAccuracy:true});
+map.on("locationfound",e=>{
+  const icon=L.divIcon({
+    html:`<div style="width:14px;height:14px;border-radius:50%;background:#b8892a;border:2.5px solid #1c0f06;box-shadow:0 0 10px rgba(184,137,42,0.8)"></div>`,
+    iconSize:[14,14],iconAnchor:[7,7]});
+  L.marker(e.latlng,{icon}).addTo(map).bindPopup("🐎 You are here, stranger").openPopup();
+  map.setView(e.latlng,10);});
 
-function selectRoute(idx) {
-    highlightRoute(idx);
-    document.querySelectorAll(".route-card").forEach(el => {
-        el.classList.toggle("active", Number(el.dataset.idx) === idx);
-    });
-}
-
-// ─────────────────────────────────────────────────
-// TURN-BY-TURN
-// ─────────────────────────────────────────────────
-const ICONS = {
-    "turn left": "⬅", "turn sharp left": "↙", "turn slight left": "↖",
-    "turn right": "➡", "turn sharp right": "↘", "turn slight right": "↗",
-    "straight": "⬆", "continue": "⬆",
-    "roundabout": "⭕", "rotary": "⭕",
-    "merge": "🔀", "ramp": "🛣",
-    "depart": "🚀", "arrive": "🏁",
-    "fork": "🍴", "end of road": "🔚",
-};
-
-function stepIcon(step) {
-    const m = step.maneuver || {};
-    const key = `${m.type||""} ${m.modifier||""}`.trim().toLowerCase();
-    for (const k of Object.keys(ICONS)) {
-        if (key.includes(k)) return ICONS[k];
-    }
-    return "📍";
-}
-
-function stepText(step) {
-    const m    = step.maneuver || {};
-    const instr = m.instruction || "";
-    if (instr.length > 2) {
-        return instr + (step.distance ? ` — ${fmtDist(step.distance)}` : "");
-    }
-    let txt = [m.type, m.modifier].filter(Boolean).join(" ");
-    if (step.name) txt += ` onto ${step.name}`;
-    if (step.distance) txt += ` — ${fmtDist(step.distance)}`;
-    return txt || "Continue";
-}
-
-function fmtDist(m) {
-    return m >= 1000 ? (m/1000).toFixed(1) + " km" : Math.round(m) + " m";
-}
-
-function showTurns(info) {
-    const list  = document.getElementById("turn-list");
-    const steps = info.steps || [];
-    list.innerHTML = "";
-
-    if (!steps.length) {
-        list.innerHTML = "<li>No turn-by-turn available.</li>";
-    } else {
-        steps.forEach(step => {
-            const li = document.createElement("li");
-            li.innerHTML = `<span class="icon">${stepIcon(step)}</span> ${stepText(step)}`;
-            list.appendChild(li);
-        });
-    }
-
-    document.getElementById("sidebar").classList.add("open");
-}
-
-// ─────────────────────────────────────────────────
-// AUTO REFRESH — 5 MIN
-// ─────────────────────────────────────────────────
-setInterval(loadAllData, 5 * 60 * 1000);
-
-// ─────────────────────────────────────────────────
-// BOOT
-// ─────────────────────────────────────────────────
-loadAllData();
+setInterval(loadAllData,5*60*1000);
+Promise.all([loadAllData(),buildAndTrainModel()]);
 </script>
 </body>
 </html>
